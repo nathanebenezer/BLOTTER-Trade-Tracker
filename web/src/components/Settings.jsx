@@ -6,11 +6,10 @@ const GROUP_LABELS = { setups: "Setups", tactics: "Tactics (entry)", mistakes: "
 
 export default function Settings({ onClose }) {
   const store = useStore();
-  const [title, setTitle] = useState(store.meta?.title || "Swing Journal");
   const [equity, setEquity] = useState(String(store.meta?.equity_baseline ?? 0));
 
   const saveMeta = async () => {
-    await store.setMeta({ title: title.trim() || "Swing Journal", equity_baseline: Number(equity) || 0 });
+    await store.setMeta({ equity_baseline: Number(equity) || 0 });
     store.toast("Settings saved");
     onClose();
   };
@@ -46,11 +45,7 @@ export default function Settings({ onClose }) {
         <div className="mbody">
           <div className="row">
             <div className="field">
-              <label>Journal title</label>
-              <input value={title} onChange={(e) => setTitle(e.target.value)} />
-            </div>
-            <div className="field">
-              <label>Starting equity $ <span className="inline-help" title="Equity-curve baseline (Phase 2). Set to 0 to plot pure cumulative realised P&L.">?</span></label>
+              <label>Starting equity $ <span className="inline-help" title="Equity-curve baseline. Set to 0 to plot pure cumulative realised P&L.">?</span></label>
               <input type="number" step="any" className="num" value={equity} onChange={(e) => setEquity(e.target.value)} />
             </div>
           </div>

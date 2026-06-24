@@ -34,7 +34,6 @@ export default function App() {
       <header className="top">
         <div className="brand">
           <span className="mark">Blotter</span>
-          <h1><b>{store.meta?.title || "Swing Journal"}</b> &nbsp;·&nbsp; realised performance ledger</h1>
         </div>
         <nav className="nav">
           <NavLink to="/" end>Trades</NavLink>
