@@ -18,6 +18,7 @@ import {
   listTagsGrouped, createTag, deleteTag,
   recordImage, getImageFilename, uid,
   previewImport, commitImport, undoImport,
+  exportAll, restoreAll,
 } from "./repo.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -53,6 +54,15 @@ const wrap = (fn) => (req, res, next) =>
 
 /* ---------- API ---------- */
 app.get("/api/state", wrap((_req, res) => res.json(getState())));
+
+/* ---------- JSON backup ---------- */
+app.get("/api/export", wrap((_req, res) => res.json(exportAll())));
+app.post("/api/restore", wrap((req, res) => {
+  if (!req.body || typeof req.body !== "object") {
+    return res.status(400).json({ error: "No backup data provided." });
+  }
+  res.json(restoreAll(req.body));
+}));
 
 app.get("/api/meta", wrap((_req, res) => res.json(getMeta())));
 app.put("/api/meta", wrap((req, res) => res.json(setMeta(req.body || {}))));

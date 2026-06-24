@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useStore } from "../store.jsx";
 import { TAG_GROUPS } from "../lib/filter.js";
 
@@ -33,6 +33,30 @@ export default function Settings({ onClose }) {
   };
   const removeIgnore = async (sym) => {
     await store.setMeta({ ignore_symbols: ignoreSymbols.filter((s) => s !== sym) });
+  };
+
+  const restoreRef = useRef(null);
+  const doExport = async () => {
+    try {
+      const data = await store.exportJSON();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `blotter-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      store.toast(`Exported ${data.trades.length} trade${data.trades.length !== 1 ? "s" : ""}`);
+    } catch (e) { store.toast(e.message || "Export failed"); }
+  };
+  const doRestore = async (file) => {
+    if (!file) return;
+    let data;
+    try { data = JSON.parse(await file.text()); }
+    catch { return store.toast("That file isn't valid JSON"); }
+    if (data.app !== "blotter") return store.toast("Not a Blotter backup file");
+    if (!window.confirm(`Restore ${data.trades?.length ?? 0} trades? This REPLACES your current journal.`)) return;
+    try { await store.restoreJSON(data); store.toast("Journal restored"); onClose(); }
+    catch (e) { store.toast(e.message || "Restore failed"); }
   };
 
   return (
@@ -80,6 +104,19 @@ export default function Settings({ onClose }) {
           </div>
           <div className="help" style={{ marginTop: 6 }}>
             These tickers are pre-ticked to skip when you import (you can still include them per-import). Empty by default.
+          </div>
+
+          <div className="section-title">Backup</div>
+          <div className="tagrow">
+            <button className="btn sm" onClick={doExport}>Export JSON</button>
+            <button className="btn sm" onClick={() => restoreRef.current?.click()}>Restore from file…</button>
+            <input ref={restoreRef} type="file" accept="application/json,.json" hidden
+              onChange={(e) => { doRestore(e.target.files[0]); e.target.value = ""; }} />
+          </div>
+          <div className="help" style={{ marginTop: 6 }}>
+            Export downloads your whole journal (trades, fills, tags, settings) as one JSON file — a portable
+            snapshot/backup. Restore replaces the current journal with a backup file. (Chart images live in the
+            <code> data/</code> folder; copy that folder to back those up too.)
           </div>
 
           <div className="divider" />

@@ -43,6 +43,8 @@ export function StoreProvider({ children }) {
     importPreview: api.importPreview,
     importCommit: async (text, sourceName, ignoreSymbols) => { const r = await api.importCommit(text, sourceName, ignoreSymbols); await reload(); return r; },
     importUndo: async (batchId) => { const r = await api.importUndo(batchId); await reload(); return r; },
+    exportJSON: api.exportJSON,
+    restoreJSON: async (data) => { const r = await api.restoreJSON(data); await reload(); return r; },
   }), [reload, toast]);
 
   const value = { ...data, ready, error, toastMsg, ...actions };

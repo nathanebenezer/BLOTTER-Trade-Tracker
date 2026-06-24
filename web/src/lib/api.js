@@ -34,4 +34,7 @@ export const api = {
   importPreview: (text, ignoreSymbols = []) => fetch("/api/import/preview", jsonReq("POST", { text, ignoreSymbols })).then(j),
   importCommit: (text, sourceName, ignoreSymbols = []) => fetch("/api/import/commit", jsonReq("POST", { text, sourceName, ignoreSymbols })).then(j),
   importUndo: (batchId) => fetch(`/api/import/${batchId}`, { method: "DELETE" }).then(j),
+
+  exportJSON: () => fetch("/api/export").then(j),
+  restoreJSON: (data) => fetch("/api/restore", jsonReq("POST", data)).then(j),
 };

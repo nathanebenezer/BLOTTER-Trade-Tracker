@@ -217,7 +217,7 @@ export const createTrade = db.transaction((input) => {
     risk_override: numOrNull(input.riskOverride),
     notes: input.notes ?? null,
     import_batch: input.importBatch ?? null,
-    created_at: ts,
+    created_at: input.createdAt || ts,   // preserved on restore; now() for new trades
     updated_at: ts,
   });
   writeFills(id, input.fills);
@@ -406,4 +406,58 @@ export const undoImport = db.transaction((batchId) => {
   ).run(batchId);
   db.prepare("DELETE FROM import_batches WHERE id = ?").run(batchId);
   return { ok: true };
+});
+
+/* ============================================================ *
+ *  JSON backup — export / restore (portable, id-independent)
+ * ============================================================ */
+export function exportAll() {
+  const { meta, tagGroups, trades } = getState();
+  const idName = new Map();
+  for (const g of TAG_GROUPS) for (const tg of tagGroups[g] || []) idName.set(tg.id, tg.name);
+  const tags = Object.fromEntries(TAG_GROUPS.map((g) => [g, (tagGroups[g] || []).map((t) => t.name)]));
+  const outTrades = trades.map((t) => ({
+    ticker: t.ticker, direction: t.direction, stop: t.stop, riskOverride: t.riskOverride,
+    notes: t.notes, createdAt: t.createdAt,
+    fills: t.fills.map((f) => ({ kind: f.kind, date: f.date, price: f.price, shares: f.shares, seq: f.seq, source: f.source, nAmt: f.nAmt })),
+    tags: Object.fromEntries(TAG_GROUPS.map((g) => [g, (t.tags[g] || []).map((id) => idName.get(id)).filter(Boolean)])),
+    images: t.images.map((im) => ({ filename: im.filename })),
+  }));
+  return { app: "blotter", version: 1, exportedAt: nowISO(), meta, tags, trades: outTrades };
+}
+
+export const restoreAll = db.transaction((json) => {
+  if (!json || json.app !== "blotter" || !Array.isArray(json.trades)) {
+    throw new Error("Not a Blotter backup file.");
+  }
+  // wipe (fills / trade_tags / images rows cascade from trades)
+  db.prepare("DELETE FROM trades").run();
+  db.prepare("DELETE FROM tags").run();
+  db.prepare("DELETE FROM import_batches").run();
+
+  if (json.meta) {
+    const m = {};
+    if (json.meta.title != null) m.title = json.meta.title;
+    if (json.meta.equity_baseline != null) m.equity_baseline = json.meta.equity_baseline;
+    if (json.meta.ignoreSymbols != null) m.ignore_symbols = json.meta.ignoreSymbols;
+    setMeta(m);
+  }
+
+  const nameToId = {};
+  for (const g of TAG_GROUPS) {
+    nameToId[g] = {};
+    for (const name of json.tags?.[g] || []) nameToId[g][name] = createTag(g, name).id;
+  }
+
+  for (const t of json.trades) {
+    const tags = Object.fromEntries(
+      TAG_GROUPS.map((g) => [g, (t.tags?.[g] || []).map((n) => nameToId[g]?.[n]).filter(Boolean)])
+    );
+    const created = createTrade({
+      ticker: t.ticker, direction: t.direction, stop: t.stop, riskOverride: t.riskOverride,
+      notes: t.notes, createdAt: t.createdAt, fills: t.fills, tags,
+    });
+    for (const im of t.images || []) if (im.filename) recordImage(im.filename, created.id);
+  }
+  return getState();
 });
