@@ -88,8 +88,12 @@ export function realisedEvents(trades, filter) {
     if (!matchTags(t, filter)) continue;
     const c = computeTrade(t);
     if (filter.result !== "all" && !(filter.result === "win" ? c.realized > 0 : c.realized < 0)) continue;
+    const closed = c.status === "closed";
     for (const e of c.exits) {
-      if (inRange(e.date, lo, hi)) events.push({ date: e.date, pnl: e.pnl, tradeId: t.id });
+      if (inRange(e.date, lo, hi)) {
+        const r = c.risk && c.risk > 0 ? e.pnl / c.risk : 0;
+        events.push({ date: e.date, pnl: e.pnl, r, tradeId: t.id, closed });
+      }
     }
   }
   return events;

@@ -1,9 +1,9 @@
 /* ============================================================ *
- *  Realised equity series — pure. Every exit from the filtered
- *  closed set is attributed to its OWN date, then cumulated.
- *  (A trade scaled out over a week contributes on each day.)
- *  $ mode starts at the equity baseline; R mode is cumulative R.
- *  Ported from blotter.html equitySeries().
+ *  Realised equity series — pure. Takes a flat list of realised
+ *  exit events ({date, pnl, r}; see realisedEvents in filter.js),
+ *  aggregates by date and cumulates. The caller decides scope
+ *  (all realised vs closed-only). $ mode starts at the equity
+ *  baseline; R mode is cumulative R. Anchored at the baseline.
  * ============================================================ */
 const dayBefore = (iso) => {
   const d = new Date(iso + "T00:00:00Z");
@@ -11,20 +11,12 @@ const dayBefore = (iso) => {
   return d.toISOString().slice(0, 10);
 };
 
-export function equitySeries(closed, { mode = "dollar", baseline = 0 } = {}) {
-  const events = [];
-  for (const o of closed) {
-    for (const e of o.c.exits) {
-      const rUnit = o.c.risk && o.c.risk > 0 ? e.pnl / o.c.risk : 0;
-      events.push({ date: e.date, pnl: e.pnl, r: rUnit });
-    }
-  }
-
-  // aggregate per day
+export function equitySeries(events, { mode = "dollar", baseline = 0 } = {}) {
+  // aggregate realised exits per day
   const byDay = new Map();
   for (const e of events) {
     const v = byDay.get(e.date) || { pnl: 0, r: 0 };
-    v.pnl += e.pnl; v.r += e.r; byDay.set(e.date, v);
+    v.pnl += e.pnl; v.r += (e.r || 0); byDay.set(e.date, v);
   }
 
   const dates = [...byDay.keys()].sort();
