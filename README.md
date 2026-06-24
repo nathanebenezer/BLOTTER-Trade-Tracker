@@ -43,8 +43,3 @@ data/
 ### Run on login (optional)
 Put a shortcut to `start-blotter.bat` in your Startup folder
 (`Win+R` → `shell:startup`) to launch Blotter when you sign in.
-
-## Status — Phase 0
-Scaffold, isomorphic engine + tests, SQLite persistence, app shell (Trades / Reports /
-Calendar) with the global filter, manual trade CRUD, four (empty) tag groups, and image
-upload. Broker import (Phase 1), Reports (Phase 2), and Calendar (Phase 3) are next.
