@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(xxd)",
+      "Bash(npm --version)",
+      "PowerShell(npm install)",
+      "Bash(node -e \"import\\('better-sqlite3'\\).then\\(\\({default:D}\\)=>{const db=new D\\(':memory:'\\);db.exec\\('create table t\\(id integer primary key, v text\\)'\\);db.prepare\\('insert into t\\(v\\) values\\(?\\)'\\).run\\('ok'\\);const r=db.prepare\\('select v from t where id=1'\\).get\\(\\);console.log\\('better-sqlite3 OK ->', r.v, '| sqlite', db.prepare\\('select sqlite_version\\(\\) as v'\\).get\\(\\).v\\);db.close\\(\\);}\\).catch\\(e=>{console.error\\('FAILED',e\\);process.exit\\(1\\);}\\);\")",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:8787/api/state)",
+      "Bash(curl -s -o /dev/null -w '%{http_code}' http://localhost:5173/api/state)",
+      "Bash(node -e \"process.stdin.on\\('data',d=>{const t=JSON.parse\\(d\\);console.log\\('created:',t.ticker,t.id,'| fills',t.fills.length\\);}\\)\")",
+      "Bash(curl -s http://localhost:5173/api/state)",
+      "Bash(node -e \"process.stdin.on\\('data',d=>{const s=JSON.parse\\(d\\);console.log\\(s.trades.length,'trade\\(s\\):',s.trades.map\\(t=>t.ticker\\).join\\(', '\\)\\);}\\)\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(node -e \"let d='';process.stdin.on\\('data',c=>d+=c\\).on\\('end',\\(\\)=>console.log\\(JSON.parse\\(d\\).trades.length,'trade\\(s\\)'\\)\\)\")"
+    ]
+  }
+}

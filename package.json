@@ -1,0 +1,30 @@
+{
+  "name": "blotter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Blotter — local-only swing-trading journal (Node + Express + SQLite + React)",
+  "scripts": {
+    "start": "node server/index.js",
+    "build": "vite build",
+    "dev:web": "vite",
+    "dev:api": "cross-env PORT=8787 node --watch server/index.js",
+    "dev": "concurrently -n web,api -c cyan,magenta \"npm:dev:web\" \"npm:dev:api\"",
+    "launch": "npm run build && npm start",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "express": "^4.21.2",
+    "multer": "^2.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "vite": "^6.0.7"
+  }
+}
