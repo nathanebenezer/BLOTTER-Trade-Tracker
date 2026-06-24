@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useStore } from "../store.jsx";
 import { selectedClosed, openPositions, TAG_GROUPS } from "../lib/filter.js";
+import { sortRows } from "../lib/sort.js";
+import { useSort } from "../lib/useSort.js";
+import SortTh from "../components/SortTh.jsx";
 import { fMoney, fNum, fInt, fPct, fR, cls, today, daysBetween } from "../lib/format.js";
 
 // page numbers with ellipsis windowing (1 … 4 5 6 … 12)
@@ -19,16 +22,24 @@ function fillsBadge(t) {
   const fills = t.fills || [];
   const maxSh = Math.max(1, ...fills.map((f) => f.shares || 0));
   const bars = fills.map((f, i) => (
-    <i
-      key={i}
-      className={f.kind === "entry" ? "e" : "x"}
-      style={{ height: Math.max(4, Math.round((f.shares / maxSh) * 16)) }}
-    />
+    <i key={i} className={f.kind === "entry" ? "e" : "x"} style={{ height: Math.max(4, Math.round((f.shares / maxSh) * 16)) }} />
   ));
   const e = fills.filter((f) => f.kind === "entry").length;
   const x = fills.filter((f) => f.kind === "exit").length;
   return <span className="ladder" title={`${e} in · ${x} out`}>{bars}</span>;
 }
+
+// column accessors for sorting (row = { t, c })
+const openAcc = (o, k) => ({
+  ticker: o.t.ticker, avgEntry: o.c.avgIn, shares: o.c.remaining, realised: o.c.realized,
+  status: o.c.status, openDate: o.c.openDate,
+  held: o.c.openDate ? daysBetween(o.c.openDate, today()) : null,
+}[k]);
+const closedAcc = (o, k) => ({
+  closeDate: o.c.closeDate, openDate: o.c.openDate, ticker: o.t.ticker,
+  avgIn: o.c.avgIn, avgOut: o.c.avgOut, shares: o.c.exitedShares, realised: o.c.realized,
+  pct: o.c.realizedPct, r: o.c.rMultiple, held: o.c.held,
+}[k]);
 
 export default function Trades({ filter, onOpen }) {
   const { trades, tagGroups } = useStore();
@@ -42,19 +53,21 @@ export default function Trades({ filter, onOpen }) {
   const tagPills = (t) => {
     const ids = TAG_GROUPS.flatMap((g) => t.tags?.[g] || []);
     if (!ids.length) return <span style={{ color: "var(--txt-3)" }}>—</span>;
-    const shown = ids.slice(0, 3);
     return (
       <>
-        {shown.map((id) => <span key={id} className="pill">{nameOf.get(id) || "?"}</span>)}
+        {ids.slice(0, 3).map((id) => <span key={id} className="pill">{nameOf.get(id) || "?"}</span>)}
         {ids.length > 3 && <span className="pill">+{ids.length - 3}</span>}
       </>
     );
   };
 
-  const open = openPositions(trades, filter);
-  const closed = selectedClosed(trades, filter);
+  const openSort = useSort("openDate", "desc");
+  const closedSort = useSort("closeDate", "desc");
 
-  // ---- pagination: closed table only (open positions stay pinned on top) ----
+  const open = sortRows(openPositions(trades, filter), openAcc, openSort.sort);
+  const closed = sortRows(selectedClosed(trades, filter), closedAcc, closedSort.sort);
+
+  // ---- pagination: closed table only ----
   const [pageSize, setPageSize] = useState(30);
   const [page, setPage] = useState(1);
   useEffect(() => { setPage(1); }, [filter, pageSize]); // reset on filter/size change
@@ -75,7 +88,6 @@ export default function Trades({ filter, onOpen }) {
   const avgHeldRaw = avg(closed.map((o) => o.c.held).filter((v) => v != null));
   const avgHeld = avgHeldRaw == null ? null : Math.round(avgHeldRaw);
 
-  // open-positions totals (shares still held + realised banked from partials)
   const openShares = open.reduce((a, o) => a + o.c.remaining, 0);
   const openRealized = open.reduce((a, o) => a + o.c.realized, 0);
 
@@ -91,8 +103,14 @@ export default function Trades({ filter, onOpen }) {
             <table className="blot">
               <thead>
                 <tr>
-                  <th className="l">Ticker</th><th className="l">Tags</th><th>Avg entry</th>
-                  <th>Shares</th><th>Realised</th><th>Status</th><th>Opened</th><th>Held</th>
+                  <SortTh className="l" label="Ticker" k="ticker" {...openSort} />
+                  <th className="l">Tags</th>
+                  <SortTh label="Avg entry" k="avgEntry" {...openSort} />
+                  <SortTh label="Shares" k="shares" {...openSort} />
+                  <SortTh label="Realised" k="realised" {...openSort} />
+                  <SortTh label="Status" k="status" {...openSort} />
+                  <SortTh label="Opened" k="openDate" {...openSort} />
+                  <SortTh label="Held" k="held" {...openSort} />
                 </tr>
               </thead>
               <tbody>
@@ -135,15 +153,24 @@ export default function Trades({ filter, onOpen }) {
           <table className="blot">
             <thead>
               <tr>
-                <th className="l">Closed</th><th className="l">Ticker</th><th className="l">Tags</th>
-                <th>Avg in</th><th>Avg out</th><th>Shares</th><th>Fills</th>
-                <th>Realised</th><th>%</th><th>R</th><th>Held</th>
+                <SortTh className="l" label="Closed" k="closeDate" {...closedSort} />
+                <SortTh className="l" label="Opened" k="openDate" {...closedSort} />
+                <SortTh className="l" label="Ticker" k="ticker" {...closedSort} />
+                <th className="l">Tags</th>
+                <SortTh label="Avg in" k="avgIn" {...closedSort} />
+                <SortTh label="Avg out" k="avgOut" {...closedSort} />
+                <SortTh label="Shares" k="shares" {...closedSort} />
+                <th>Fills</th>
+                <SortTh label="Realised" k="realised" {...closedSort} />
+                <SortTh label="%" k="pct" {...closedSort} />
+                <SortTh label="R" k="r" {...closedSort} />
+                <SortTh label="Held" k="held" {...closedSort} />
               </tr>
             </thead>
             <tbody>
               {n === 0 ? (
                 <tr>
-                  <td colSpan={11}>
+                  <td colSpan={12}>
                     <div className="empty">
                       <b>No closed trades here yet</b>
                       Adjust the filter, or log a trade and close it out.
@@ -154,6 +181,7 @@ export default function Trades({ filter, onOpen }) {
                 pageRows.map(({ t, c }) => (
                   <tr key={t.id} onClick={() => onOpen(t)}>
                     <td className="l num" style={{ color: "var(--txt-2)" }}>{c.closeDate}</td>
+                    <td className="l num" style={{ color: "var(--txt-2)" }}>{c.openDate || "—"}</td>
                     <td className="l">
                       <span className="tick">{t.ticker || "—"}</span>{" "}
                       <span className={"dir " + (c.dirLong ? "long" : "short")}>{c.dirLong ? "L" : "S"}</span>
@@ -174,7 +202,7 @@ export default function Trades({ filter, onOpen }) {
             {n > 0 && (
               <tfoot>
                 <tr className="tfoot-total">
-                  <td className="l" colSpan={3}>TOTAL <span className="tfoot-sub">{n} trade{n !== 1 ? "s" : ""}</span></td>
+                  <td className="l" colSpan={4}>TOTAL <span className="tfoot-sub">{n} trade{n !== 1 ? "s" : ""}</span></td>
                   <td></td><td></td>
                   <td className="num">{fInt(totalShares)}</td>
                   <td></td>
@@ -182,7 +210,7 @@ export default function Trades({ filter, onOpen }) {
                   <td></td><td></td><td></td>
                 </tr>
                 <tr className="tfoot-avg">
-                  <td className="l" colSpan={3}>AVERAGE</td>
+                  <td className="l" colSpan={4}>AVERAGE</td>
                   <td></td><td></td>
                   <td className="num">{fInt(avgShares)}</td>
                   <td></td>

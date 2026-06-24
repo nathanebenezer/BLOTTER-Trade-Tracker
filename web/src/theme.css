@@ -135,6 +135,9 @@ table.blot th{
   position:sticky;top:0;background:var(--surface);white-space:nowrap;
 }
 table.blot th.l,table.blot td.l{text-align:left}
+table.blot th.sortable{cursor:pointer;user-select:none}
+table.blot th.sortable:hover{color:var(--txt-2)}
+table.blot th.sorted{color:var(--brass)}
 table.blot td{padding:11px 12px;border-bottom:1px solid var(--line-soft);text-align:right;white-space:nowrap}
 table.blot tbody tr{cursor:pointer;transition:background .1s}
 table.blot tbody tr:hover{background:var(--panel)}
