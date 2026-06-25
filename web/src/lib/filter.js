@@ -112,3 +112,53 @@ export function aggregateByDay(events) {
   for (const [date, v] of acc) out.set(date, { pnl: v.pnl, count: v.ids.size });
   return out;
 }
+
+/* ============================================================ *
+ *  Calendar activity — every trading DAY, not just realisation
+ *  days. A day counts if any fill (entry OR exit) of a matching
+ *  trade lands on it; P&L for the day is the realised P&L that
+ *  day (0 when only buying/adding). Carries per-trade rows for
+ *  the click-a-day executions panel. Honours the same filters
+ *  and date range as realisedEvents.
+ *    date -> { pnl, count, rows: [{ tradeId, ticker, direction,
+ *                                   pnl, shares, execs, status }] }
+ * ============================================================ */
+export function dayActivity(trades, filter) {
+  const [lo, hi] = rangeBounds(filter);
+  const acc = new Map(); // date -> { pnl, ids:Set, rows:[] }
+  for (const t of trades) {
+    if (!matchDir(t, filter.direction)) continue;
+    if (!matchSymbol(t, filter.symbol)) continue;
+    if (!matchTags(t, filter)) continue;
+    const c = computeTrade(t);
+    if (filter.result !== "all" && !(filter.result === "win" ? c.realized > 0 : c.realized < 0)) continue;
+
+    // group this trade's in-range fills by their own date (volume + exec count)
+    const perDate = new Map(); // date -> { pnl, shares, execs }
+    for (const f of t.fills || []) {
+      if (!f.date || f.price == null || f.shares == null || f.shares <= 0) continue;
+      if (!inRange(f.date, lo, hi)) continue;
+      let d = perDate.get(f.date);
+      if (!d) { d = { pnl: 0, shares: 0, execs: 0 }; perDate.set(f.date, d); }
+      d.shares += f.shares; d.execs += 1;
+    }
+    // attribute realised P&L to each exit's own date (engine is the source of truth)
+    for (const e of c.exits) {
+      const d = perDate.get(e.date);
+      if (d) d.pnl += e.pnl;
+    }
+    for (const [date, d] of perDate) {
+      let v = acc.get(date);
+      if (!v) { v = { pnl: 0, ids: new Set(), rows: [] }; acc.set(date, v); }
+      v.pnl += d.pnl;
+      v.ids.add(t.id);
+      v.rows.push({ tradeId: t.id, ticker: t.ticker, direction: t.direction || "long", pnl: d.pnl, shares: d.shares, execs: d.execs, status: c.status });
+    }
+  }
+  const out = new Map();
+  for (const [date, v] of acc) {
+    v.rows.sort((a, b) => (a.ticker < b.ticker ? -1 : a.ticker > b.ticker ? 1 : 0));
+    out.set(date, { pnl: v.pnl, count: v.ids.size, rows: v.rows });
+  }
+  return out;
+}

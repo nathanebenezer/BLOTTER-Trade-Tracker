@@ -1,7 +1,7 @@
 /* Calendar selection tests — realised P&L attributed to each exit's own date. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { realisedEvents, aggregateByDay, defaultFilter } from "../web/src/lib/filter.js";
+import { realisedEvents, aggregateByDay, dayActivity, defaultFilter } from "../web/src/lib/filter.js";
 
 const near = (a, b, eps = 1e-3) =>
   assert.ok(Math.abs(a - b) <= eps, `expected ${a} ≈ ${b} (±${eps})`);
@@ -62,4 +62,46 @@ test("filters drop non-matching trades' exits", () => {
   const byDay = aggregateByDay(realisedEvents([scaled, openPartial, other], f));
   assert.equal(byDay.get("2026-01-02").count, 1); // only AAA (the scaled trade)
   near(byDay.get("2026-01-02").pnl, 50);
+});
+
+/* ---------- dayActivity: entries count too (buy days) ---------- */
+
+test("dayActivity — a buy-only entry day counts with $0 P&L", () => {
+  const byDay = dayActivity([scaled, openPartial, other], defaultFilter());
+  // 01-01 is the entry day for all three trades — no realisation, but activity
+  const d1 = byDay.get("2026-01-01");
+  assert.equal(d1.count, 3);   // realisedEvents/aggregateByDay would have no 01-01 entry at all
+  near(d1.pnl, 0);             // bought only → nothing realised
+  assert.equal(d1.rows.length, 3);
+});
+
+test("dayActivity — realised days keep their P&L and counts", () => {
+  const byDay = dayActivity([scaled, openPartial, other], defaultFilter());
+  const d2 = byDay.get("2026-01-02");
+  assert.equal(d2.count, 3);
+  near(d2.pnl, 0);             // +50 +50 -100
+  const d3 = byDay.get("2026-01-03");
+  assert.equal(d3.count, 1);
+  near(d3.pnl, 200);
+});
+
+test("dayActivity — per-trade rows carry side, volume, exec count", () => {
+  const byDay = dayActivity([scaled], defaultFilter());
+  // 01-01: one entry of 100 sh; 01-03: one exit of 50 sh @ +200
+  const entryRow = byDay.get("2026-01-01").rows[0];
+  assert.equal(entryRow.ticker, "AAA");
+  assert.equal(entryRow.direction, "long");
+  assert.equal(entryRow.shares, 100);
+  assert.equal(entryRow.execs, 1);
+  near(entryRow.pnl, 0);
+  const exitRow = byDay.get("2026-01-03").rows[0];
+  assert.equal(exitRow.shares, 50);
+  near(exitRow.pnl, 200);
+});
+
+test("dayActivity — date range bounds which fills appear", () => {
+  const f = { ...defaultFilter(), preset: "custom", dateFrom: "2026-01-02", dateTo: "2026-01-31" };
+  const byDay = dayActivity([scaled, openPartial, other], f);
+  assert.equal(byDay.has("2026-01-01"), false); // entry day before range → excluded
+  assert.equal(byDay.get("2026-01-02").count, 3);
 });

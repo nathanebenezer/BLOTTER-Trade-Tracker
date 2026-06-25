@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../store.jsx";
-import { realisedEvents, aggregateByDay } from "../lib/filter.js";
+import { dayActivity } from "../lib/filter.js";
 import { fMoney, fInt, cls } from "../lib/format.js";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June",
@@ -26,7 +26,7 @@ export default function Calendar({ filter }) {
   const now = new Date();
   const [view, setView] = useState({ mode: "year", year: now.getFullYear(), month: now.getMonth() });
 
-  const byDay = useMemo(() => aggregateByDay(realisedEvents(trades, filter)), [trades, filter]);
+  const byDay = useMemo(() => dayActivity(trades, filter), [trades, filter]);
 
   /* ---------- year overview ---------- */
   const year = useMemo(() => {
