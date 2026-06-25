@@ -10,6 +10,12 @@ const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 const pad = (n) => String(n).padStart(2, "0");
 const dayKey = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
+// "2026-01-13" -> "Tue, Jan 13, 2026" (parsed as UTC so the date never shifts)
+const dayLabel = (key) => {
+  const [y, m, d] = key.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return `${WD[dt.getUTCDay()]}, ${MONTHS_SHORT[m - 1]} ${d}, ${y}`;
+};
 const daysInMonth = (y, m) => new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
 const firstWeekday = (y, m) => new Date(Date.UTC(y, m, 1)).getUTCDay();
 
@@ -21,12 +27,15 @@ function tint(pnl, maxAbs) {
 }
 const money0 = (n) => (n > 0 ? "+" : n < 0 ? "-" : "") + "$" + Math.abs(Math.round(n)).toLocaleString("en-US");
 
-export default function Calendar({ filter }) {
+export default function Calendar({ filter, onOpen }) {
   const { trades } = useStore();
   const now = new Date();
   const [view, setView] = useState({ mode: "year", year: now.getFullYear(), month: now.getMonth() });
+  const [selDay, setSelDay] = useState(null); // "YYYY-MM-DD" of the day whose executions are shown
 
   const byDay = useMemo(() => dayActivity(trades, filter), [trades, filter]);
+  const selData = selDay ? byDay.get(selDay) : null;
+  const openTrade = (id) => { const t = trades.find((x) => x.id === id); if (t) onOpen?.(t); };
 
   /* ---------- year overview ---------- */
   const year = useMemo(() => {
@@ -72,11 +81,11 @@ export default function Calendar({ filter }) {
     return { weeks, total, count, maxAbs };
   }, [byDay, view.year, view.month]);
 
-  const stepMonth = (delta) => setView((v) => {
+  const stepMonth = (delta) => { setSelDay(null); setView((v) => {
     let m = v.month + delta, y = v.year;
     if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; }
     return { mode: "month", year: y, month: m };
-  });
+  }); };
 
   if (view.mode === "year") {
     return (
@@ -111,9 +120,10 @@ export default function Calendar({ filter }) {
   }
 
   return (
+    <>
     <div className="panel">
       <div className="head cal-head">
-        <button className="btn sm ghost" onClick={() => setView((v) => ({ ...v, mode: "year" }))}>← Year</button>
+        <button className="btn sm ghost" onClick={() => { setSelDay(null); setView((v) => ({ ...v, mode: "year" })); }}>← Year</button>
         <button className="btn sm" onClick={() => stepMonth(-1)}>‹</button>
         <h2>{MONTHS[view.month]} {view.year}</h2>
         <button className="btn sm" onClick={() => stepMonth(1)}>›</button>
@@ -130,8 +140,16 @@ export default function Calendar({ filter }) {
           </div>
           {month.weeks.map((wk, wi) => (
             <div key={wi} className="cal-row cal-week-row">
-              {wk.cells.map((c, ci) => (
-                <div key={ci} className={"cal-day" + (c ? "" : " empty")} style={{ background: c ? tint(c.pnl, month.maxAbs) : undefined }}>
+              {wk.cells.map((c, ci) => {
+                const key = c ? dayKey(view.year, view.month, c.d) : null;
+                const active = c && c.count > 0;
+                return (
+                <div
+                  key={ci}
+                  className={"cal-day" + (c ? "" : " empty") + (active ? " clickable" : "") + (key && key === selDay ? " selday" : "")}
+                  style={{ background: c ? tint(c.pnl, month.maxAbs) : undefined }}
+                  onClick={active ? () => setSelDay((s) => (s === key ? null : key)) : undefined}
+                >
                   {c && (
                     <>
                       <span className="dnum">{c.d}</span>
@@ -142,7 +160,8 @@ export default function Calendar({ filter }) {
                     </>
                   )}
                 </div>
-              ))}
+                );
+              })}
               <div className="cal-week-total">
                 {wk.count > 0 ? <>
                   <span className={"num " + cls(wk.pnl)}>{money0(wk.pnl)}</span>
@@ -154,5 +173,37 @@ export default function Calendar({ filter }) {
         </div>
       </div>
     </div>
+
+    {selData && (
+      <div className="panel cal-day-panel">
+        <div className="head">
+          <h2>{dayLabel(selDay)}</h2>
+          <span className="meta">
+            <b className={"num " + cls(selData.pnl)}>{money0(selData.pnl)}</b> · {fInt(selData.count)} trade{selData.count !== 1 ? "s" : ""}
+          </span>
+          <div className="spacer" style={{ flex: 1 }} />
+          <button className="btn sm ghost" onClick={() => setSelDay(null)}>Close</button>
+        </div>
+        <div className="body">
+          <table className="blot cal-exec">
+            <thead>
+              <tr><th className="l">Symbol</th><th className="l">Side</th><th>P&amp;L</th><th>Volume</th><th>Execs</th></tr>
+            </thead>
+            <tbody>
+              {selData.rows.map((row) => (
+                <tr key={row.tradeId} onClick={() => openTrade(row.tradeId)}>
+                  <td className="l"><b className="tick">{row.ticker}</b></td>
+                  <td className="l"><span className={"dir " + (row.direction === "short" ? "short" : "long")}>{row.direction === "short" ? "Short" : "Long"}</span></td>
+                  <td className={"num " + cls(row.pnl)}>{row.pnl ? money0(row.pnl) : "$0"}</td>
+                  <td className="num">{fInt(row.shares)}</td>
+                  <td className="num">{fInt(row.execs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

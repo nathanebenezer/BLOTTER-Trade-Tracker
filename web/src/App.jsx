@@ -53,7 +53,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Trades filter={filter} onOpen={openEditor} />} />
           <Route path="/reports" element={<Reports filter={filter} />} />
-          <Route path="/calendar" element={<Calendar filter={filter} />} />
+          <Route path="/calendar" element={<Calendar filter={filter} onOpen={openEditor} />} />
         </Routes>
       </div>
 
