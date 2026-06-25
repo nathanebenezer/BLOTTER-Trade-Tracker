@@ -14,6 +14,7 @@ import { computeTrade } from "../shared/engine.js";
 
 const fixture = readFileSync(new URL("../sample_broker_export.xls", import.meta.url), "utf8");
 const fixture5 = readFileSync(new URL("../ExcelReport__5_.xls", import.meta.url), "utf8");
+const fixture6 = readFileSync(new URL("../ExcelReport (6).xls", import.meta.url), "utf8");
 
 test("helpers — number cleaning + date conversion", () => {
   assert.equal(cleanNumber('"2,209.80"'), 2209.80);
@@ -42,6 +43,23 @@ test("parse — fixture yields 5 stock executions, cleaned", () => {
 
 test("parse — rejects an unrecognized header", () => {
   assert.throws(() => parseExecutions("a\tb\tc\n1\t2\t3"), /Unrecognized broker file/);
+});
+
+test("parse — tolerates a trailing empty column from a trailing delimiter", () => {
+  // some broker exports end every row with a tab, yielding an empty 10th column
+  const header = "trade_dt\tcurrency\tacct_type\ttrd_type\tsymbol\tdispdescr\tqty\tprice\tn_amt\t";
+  const row = "4/1/2026\tUSD\tMARGIN\tBuy (Stock)\tSGOV\tISHARES\t526\t100.39\t52,805.77\t";
+  const { executions } = parseExecutions(`${header}\n${row}`);
+  assert.equal(executions.length, 1);
+  assert.equal(executions[0].symbol, "SGOV");
+  assert.equal(executions[0].shares, 526);
+});
+
+test("ExcelReport(6) — real file with trailing tab columns imports cleanly", () => {
+  const { executions, skipped } = parseExecutions(fixture6);
+  assert.ok(executions.length > 0);
+  assert.ok(executions.every((e) => e.symbol && (e.side === "buy" || e.side === "sell")));
+  assert.ok(skipped.every((s) => typeof s.reason === "string"));
 });
 
 test("reconstruct — fixture → QQQ#1 closed, QQQ#2 closed, BFLY open", () => {

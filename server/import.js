@@ -53,7 +53,11 @@ export function parseExecutions(text) {
   if (!lines.length) throw new Error("The file is empty.");
 
   const delim = lines[0].includes("\t") ? "\t" : lines[0].includes(",") ? "," : "\t";
-  const header = splitFields(lines[0], delim).map((h) => h.toLowerCase());
+  // Some broker exports end every row with a trailing delimiter, yielding an
+  // empty trailing column — drop those so the header matches our known schema.
+  const rawHeader = splitFields(lines[0], delim).map((h) => h.toLowerCase());
+  while (rawHeader.length > KNOWN_HEADER.length && rawHeader[rawHeader.length - 1] === "") rawHeader.pop();
+  const header = rawHeader;
   const headerOk =
     header.length === KNOWN_HEADER.length && KNOWN_HEADER.every((h, i) => header[i] === h);
   if (!headerOk) {
