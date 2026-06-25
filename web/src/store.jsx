@@ -48,6 +48,7 @@ export function StoreProvider({ children }) {
     bulkTag: async (tradeIds, tagIds, op) => { const r = await api.bulkTag(tradeIds, tagIds, op); await reload(); return r; },
     bulkDelete: async (tradeIds) => { const r = await api.bulkDelete(tradeIds); await reload(); return r; },
     mergeTrades: async (tradeIds) => { const r = await api.mergeTrades(tradeIds); await reload(); return r; },
+    splitTrades: async (tradeIds) => { const r = await api.splitTrades(tradeIds); await reload(); return r; },
   }), [reload, toast]);
 
   const value = { ...data, ready, error, toastMsg, ...actions };

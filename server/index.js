@@ -19,7 +19,7 @@ import {
   recordImage, getImageFilename, uid,
   previewImport, commitImport, undoImport,
   exportAll, restoreAll,
-  bulkTag, bulkDelete, mergeTrades,
+  bulkTag, bulkDelete, mergeTrades, splitTrades,
 } from "./repo.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -90,6 +90,7 @@ app.post("/api/trades/bulk-tags", wrap((req, res) => {
 }));
 app.post("/api/trades/bulk-delete", wrap((req, res) => res.json(bulkDelete(req.body?.tradeIds))));
 app.post("/api/trades/merge", wrap((req, res) => res.json(mergeTrades(req.body?.tradeIds))));
+app.post("/api/trades/split", wrap((req, res) => res.json(splitTrades(req.body?.tradeIds))));
 
 app.get("/api/tags", wrap((_req, res) => res.json(listTagsGrouped())));
 app.post("/api/tags", wrap((req, res) => {

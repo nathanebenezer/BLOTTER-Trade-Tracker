@@ -10,7 +10,7 @@ import path from "node:path";
 import { db, IMAGES_DIR, TAG_GROUPS } from "./db.js";
 import { computeTrade } from "../shared/engine.js";
 import { parseExecutions, partitionDuplicates, reconstruct, dedupKey, distinctSymbols, applyIgnore } from "./import.js";
-import { combineFills } from "./tradeops.js";
+import { combineFills, fillsToExecutions } from "./tradeops.js";
 
 export const uid = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -505,5 +505,38 @@ export const mergeTrades = db.transaction((tradeIds) => {
 
   createTrade({ ticker, direction, stop, riskOverride, notes, fills, tags, images, createdAt });
   for (const t of ts) deleteTrade(t.id);
+  return getState();
+});
+
+// Split: reconstruct a trade's fills (reusing the import reconstruction). A
+// trade that returns flat→position→flat splits into separate trades; a single
+// round-trip is left untouched. Each piece copies stop/risk/notes/tags; the
+// original's images go to the first piece.
+export const splitTrades = db.transaction((tradeIds) => {
+  for (const id of [...new Set((tradeIds || []).filter(Boolean))]) {
+    const trade = getTrade(id);
+    if (!trade) continue;
+    const sorted = [...trade.fills].sort(
+      (a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.seq ?? 0) - (b.seq ?? 0))
+    );
+    const { newTrades } = reconstruct(fillsToExecutions(trade), {});
+    if (newTrades.length <= 1) continue; // nothing to split
+
+    // restore each reconstructed fill's original source/n_amt (1:1 chronological)
+    let k = 0;
+    for (const piece of newTrades) for (const f of piece.fills) {
+      const o = sorted[k++];
+      if (o) { f.source = o.source; f.nAmt = o.nAmt; }
+    }
+    newTrades.forEach((piece, idx) => {
+      createTrade({
+        ticker: trade.ticker, direction: piece.direction,
+        stop: trade.stop, riskOverride: trade.riskOverride, notes: trade.notes,
+        fills: piece.fills, tags: trade.tags,
+        images: idx === 0 ? trade.images.map((im) => ({ id: im.id })) : [],
+      });
+    });
+    deleteTrade(id);
+  }
   return getState();
 });

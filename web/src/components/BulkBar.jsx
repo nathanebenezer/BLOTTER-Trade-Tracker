@@ -29,6 +29,9 @@ export default function BulkBar({ selectedIds, totalMatching, onSelectAll, onCle
       } else if (action === "merge") {
         await store.mergeTrades(selectedIds);
         store.toast(`Merged ${n} trades into one`);
+      } else if (action === "split") {
+        await store.splitTrades(selectedIds);
+        store.toast(`Split ${n} trade${n !== 1 ? "s" : ""}`);
       }
       onClear();
     } catch (e) {
@@ -52,6 +55,7 @@ export default function BulkBar({ selectedIds, totalMatching, onSelectAll, onCle
         <option value="add">Add Tag</option>
         <option value="remove">Delete Tag</option>
         <option value="merge">Merge Trades</option>
+        <option value="split">Split Trades</option>
         <option value="delete">Delete Trades</option>
       </select>
 
@@ -67,6 +71,7 @@ export default function BulkBar({ selectedIds, totalMatching, onSelectAll, onCle
         </div>
       )}
       {action === "merge" && <span style={{ color: "var(--txt-3)", fontSize: 12 }}>same ticker &amp; direction</span>}
+      {action === "split" && <span style={{ color: "var(--txt-3)", fontSize: 12 }}>separates flat-to-flat round-trips</span>}
 
       <button className={"btn sm " + (action === "delete" ? "danger" : "primary")} disabled={submitDisabled} onClick={submit}>
         {busy ? "…" : "Submit"}
