@@ -39,4 +39,6 @@ export const api = {
   restoreJSON: (data) => fetch("/api/restore", jsonReq("POST", data)).then(j),
 
   bulkTag: (tradeIds, tagIds, op) => fetch("/api/trades/bulk-tags", jsonReq("POST", { tradeIds, tagIds, op })).then(j),
+  bulkDelete: (tradeIds) => fetch("/api/trades/bulk-delete", jsonReq("POST", { tradeIds })).then(j),
+  mergeTrades: (tradeIds) => fetch("/api/trades/merge", jsonReq("POST", { tradeIds })).then(j),
 };

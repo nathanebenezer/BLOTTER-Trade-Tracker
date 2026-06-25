@@ -10,6 +10,7 @@ import path from "node:path";
 import { db, IMAGES_DIR, TAG_GROUPS } from "./db.js";
 import { computeTrade } from "../shared/engine.js";
 import { parseExecutions, partitionDuplicates, reconstruct, dedupKey, distinctSymbols, applyIgnore } from "./import.js";
+import { combineFills } from "./tradeops.js";
 
 export const uid = () =>
   Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -478,5 +479,31 @@ export const bulkTag = db.transaction((tradeIds, tagIds, op) => {
   const upd = db.prepare("UPDATE trades SET updated_at = ? WHERE id = ?");
   const now = nowISO();
   for (const tid of ids) upd.run(now, tid);
+  return getState();
+});
+
+export const bulkDelete = db.transaction((tradeIds) => {
+  for (const id of [...new Set((tradeIds || []).filter(Boolean))]) deleteTrade(id);
+  return getState();
+});
+
+export const mergeTrades = db.transaction((tradeIds) => {
+  const ids = [...new Set((tradeIds || []).filter(Boolean))];
+  const ts = ids.map(getTrade).filter(Boolean);
+  if (ts.length < 2) throw new Error("Select at least two trades to merge.");
+  const ticker = ts[0].ticker, direction = ts[0].direction;
+  if (!ts.every((t) => t.ticker === ticker)) throw new Error("Merge needs trades with the same ticker.");
+  if (!ts.every((t) => t.direction === direction)) throw new Error("Merge needs trades with the same direction (all long or all short).");
+
+  const fills = combineFills(ts);
+  const tags = Object.fromEntries(TAG_GROUPS.map((g) => [g, [...new Set(ts.flatMap((t) => t.tags[g] || []))]]));
+  const images = [...new Map(ts.flatMap((t) => t.images || []).map((im) => [im.id, im])).values()].map((im) => ({ id: im.id }));
+  const notes = ts.map((t) => t.notes).filter(Boolean).join("\n---\n") || null;
+  const stop = ts.map((t) => t.stop).find((v) => v != null) ?? null;
+  const riskOverride = ts.map((t) => t.riskOverride).find((v) => v != null) ?? null;
+  const createdAt = ts.map((t) => t.createdAt).filter(Boolean).sort()[0]; // earliest
+
+  createTrade({ ticker, direction, stop, riskOverride, notes, fills, tags, images, createdAt });
+  for (const t of ts) deleteTrade(t.id);
   return getState();
 });
