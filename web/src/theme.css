@@ -138,6 +138,15 @@ table.blot th.l,table.blot td.l{text-align:left}
 table.blot th.sortable{cursor:pointer;user-select:none}
 table.blot th.sortable:hover{color:var(--txt-2)}
 table.blot th.sorted{color:var(--brass)}
+table.blot td.chk,table.blot th.chk{width:32px;text-align:center;padding-left:14px;padding-right:4px}
+table.blot td.chk input,table.blot th.chk input{cursor:pointer;width:15px;height:15px;accent-color:var(--brass);vertical-align:middle}
+table.blot tbody tr.sel-row{background:var(--panel-2)}
+table.blot tbody tr.sel-row:hover{background:var(--panel)}
+
+/* bulk-action bar */
+.bulkbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;background:var(--panel-2);border:1px solid var(--brass-dim);border-radius:var(--radius);margin-bottom:14px;position:sticky;top:0;z-index:30}
+.bulkbar .num{color:var(--brass)}
+.bulktags{display:flex;gap:6px;flex-wrap:wrap;align-items:center;max-width:46%}
 table.blot td{padding:11px 12px;border-bottom:1px solid var(--line-soft);text-align:right;white-space:nowrap}
 table.blot tbody tr{cursor:pointer;transition:background .1s}
 table.blot tbody tr:hover{background:var(--panel)}

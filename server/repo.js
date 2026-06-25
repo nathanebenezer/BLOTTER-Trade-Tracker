@@ -461,3 +461,22 @@ export const restoreAll = db.transaction((json) => {
   }
   return getState();
 });
+
+/* ============================================================ *
+ *  Bulk trade actions (selection-driven, from the Trades page)
+ * ============================================================ */
+export const bulkTag = db.transaction((tradeIds, tagIds, op) => {
+  const ids = [...new Set((tradeIds || []).filter(Boolean))];
+  const tags = [...new Set((tagIds || []).map(Number).filter(Boolean))];
+  if (!ids.length || !tags.length) return getState();
+  if (op === "remove") {
+    const stmt = db.prepare("DELETE FROM trade_tags WHERE trade_id = ? AND tag_id = ?");
+    for (const tid of ids) for (const tag of tags) stmt.run(tid, tag);
+  } else {
+    for (const tid of ids) for (const tag of tags) insTradeTag.run(tid, tag); // INSERT OR IGNORE
+  }
+  const upd = db.prepare("UPDATE trades SET updated_at = ? WHERE id = ?");
+  const now = nowISO();
+  for (const tid of ids) upd.run(now, tid);
+  return getState();
+});

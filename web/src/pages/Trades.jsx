@@ -4,6 +4,7 @@ import { selectedClosed, openPositions, TAG_GROUPS } from "../lib/filter.js";
 import { sortRows } from "../lib/sort.js";
 import { useSort } from "../lib/useSort.js";
 import SortTh from "../components/SortTh.jsx";
+import BulkBar from "../components/BulkBar.jsx";
 import { fMoney, fNum, fInt, fPct, fR, cls, today, daysBetween } from "../lib/format.js";
 
 // page numbers with ellipsis windowing (1 … 4 5 6 … 12)
@@ -29,7 +30,6 @@ function fillsBadge(t) {
   return <span className="ladder" title={`${e} in · ${x} out`}>{bars}</span>;
 }
 
-// column accessors for sorting (row = { t, c })
 const openAcc = (o, k) => ({
   ticker: o.t.ticker, avgEntry: o.c.avgIn, shares: o.c.remaining, realised: o.c.realized,
   status: o.c.status, openDate: o.c.openDate,
@@ -70,14 +70,27 @@ export default function Trades({ filter, onOpen }) {
   // ---- pagination: closed table only ----
   const [pageSize, setPageSize] = useState(30);
   const [page, setPage] = useState(1);
-  useEffect(() => { setPage(1); }, [filter, pageSize]); // reset on filter/size change
+  useEffect(() => { setPage(1); }, [filter, pageSize]);
 
   const n = closed.length;
   const pageCount = Math.max(1, Math.ceil(n / pageSize));
   const cur = Math.min(page, pageCount);
   const pageRows = closed.slice((cur - 1) * pageSize, cur * pageSize);
 
-  // footer spans the WHOLE filtered set, not just the visible page
+  // ---- bulk selection (shared across both tables) ----
+  const [selected, setSelected] = useState(() => new Set());
+  useEffect(() => { setSelected(new Set()); }, [filter]); // reset on filter change
+  const toggle = (id) => setSelected((s) => { const m = new Set(s); m.has(id) ? m.delete(id) : m.add(id); return m; });
+  const setMany = (ids, on) => setSelected((s) => { const m = new Set(s); ids.forEach((id) => (on ? m.add(id) : m.delete(id))); return m; });
+  const clearSel = () => setSelected(new Set());
+
+  const allMatchingIds = useMemo(() => [...open.map((o) => o.t.id), ...closed.map((o) => o.t.id)], [open, closed]);
+  const openIds = open.map((o) => o.t.id);
+  const pageIds = pageRows.map((o) => o.t.id);
+  const allOpenSel = openIds.length > 0 && openIds.every((id) => selected.has(id));
+  const allPageSel = pageIds.length > 0 && pageIds.every((id) => selected.has(id));
+
+  // footer totals span the WHOLE filtered set
   const totalRealized = closed.reduce((a, o) => a + o.c.realized, 0);
   const totalShares = closed.reduce((a, o) => a + o.c.exitedShares, 0);
   const avgRealized = n ? totalRealized / n : 0;
@@ -91,8 +104,23 @@ export default function Trades({ filter, onOpen }) {
   const openShares = open.reduce((a, o) => a + o.c.remaining, 0);
   const openRealized = open.reduce((a, o) => a + o.c.realized, 0);
 
+  const Chk = ({ checked, onChange, header }) => (
+    <td className="chk" onClick={(e) => e.stopPropagation()}>
+      <input type="checkbox" checked={checked} onChange={onChange} />
+    </td>
+  );
+
   return (
     <>
+      {selected.size > 0 && (
+        <BulkBar
+          selectedIds={[...selected]}
+          totalMatching={allMatchingIds.length}
+          onSelectAll={() => setSelected(new Set(allMatchingIds))}
+          onClear={clearSel}
+        />
+      )}
+
       {open.length > 0 && (
         <div className="panel">
           <div className="head">
@@ -103,6 +131,7 @@ export default function Trades({ filter, onOpen }) {
             <table className="blot">
               <thead>
                 <tr>
+                  <th className="chk"><input type="checkbox" checked={allOpenSel} onChange={() => setMany(openIds, !allOpenSel)} /></th>
                   <SortTh className="l" label="Ticker" k="ticker" {...openSort} />
                   <th className="l">Tags</th>
                   <SortTh label="Avg entry" k="avgEntry" {...openSort} />
@@ -115,7 +144,8 @@ export default function Trades({ filter, onOpen }) {
               </thead>
               <tbody>
                 {open.map(({ t, c }) => (
-                  <tr key={t.id} onClick={() => onOpen(t)}>
+                  <tr key={t.id} onClick={() => onOpen(t)} className={selected.has(t.id) ? "sel-row" : ""}>
+                    <Chk checked={selected.has(t.id)} onChange={() => toggle(t.id)} />
                     <td className="l">
                       <span className="tick">{t.ticker || "—"}</span>{" "}
                       <span className={"dir " + (c.dirLong ? "long" : "short")}>{c.dirLong ? "L" : "S"}</span>
@@ -132,6 +162,7 @@ export default function Trades({ filter, onOpen }) {
               </tbody>
               <tfoot>
                 <tr className="tfoot-total">
+                  <td></td>
                   <td className="l" colSpan={2}>TOTAL <span className="tfoot-sub">{open.length} open</span></td>
                   <td></td>
                   <td className="num">{fInt(openShares)}</td>
@@ -153,6 +184,7 @@ export default function Trades({ filter, onOpen }) {
           <table className="blot">
             <thead>
               <tr>
+                <th className="chk"><input type="checkbox" checked={allPageSel} onChange={() => setMany(pageIds, !allPageSel)} /></th>
                 <SortTh className="l" label="Closed" k="closeDate" {...closedSort} />
                 <SortTh className="l" label="Opened" k="openDate" {...closedSort} />
                 <SortTh className="l" label="Ticker" k="ticker" {...closedSort} />
@@ -170,7 +202,7 @@ export default function Trades({ filter, onOpen }) {
             <tbody>
               {n === 0 ? (
                 <tr>
-                  <td colSpan={12}>
+                  <td colSpan={13}>
                     <div className="empty">
                       <b>No closed trades here yet</b>
                       Adjust the filter, or log a trade and close it out.
@@ -179,7 +211,8 @@ export default function Trades({ filter, onOpen }) {
                 </tr>
               ) : (
                 pageRows.map(({ t, c }) => (
-                  <tr key={t.id} onClick={() => onOpen(t)}>
+                  <tr key={t.id} onClick={() => onOpen(t)} className={selected.has(t.id) ? "sel-row" : ""}>
+                    <Chk checked={selected.has(t.id)} onChange={() => toggle(t.id)} />
                     <td className="l num" style={{ color: "var(--txt-2)" }}>{c.closeDate}</td>
                     <td className="l num" style={{ color: "var(--txt-2)" }}>{c.openDate || "—"}</td>
                     <td className="l">
@@ -202,6 +235,7 @@ export default function Trades({ filter, onOpen }) {
             {n > 0 && (
               <tfoot>
                 <tr className="tfoot-total">
+                  <td></td>
                   <td className="l" colSpan={4}>TOTAL <span className="tfoot-sub">{n} trade{n !== 1 ? "s" : ""}</span></td>
                   <td></td><td></td>
                   <td className="num">{fInt(totalShares)}</td>
@@ -210,6 +244,7 @@ export default function Trades({ filter, onOpen }) {
                   <td></td><td></td><td></td>
                 </tr>
                 <tr className="tfoot-avg">
+                  <td></td>
                   <td className="l" colSpan={4}>AVERAGE</td>
                   <td></td><td></td>
                   <td className="num">{fInt(avgShares)}</td>

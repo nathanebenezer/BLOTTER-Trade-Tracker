@@ -37,4 +37,6 @@ export const api = {
 
   exportJSON: () => fetch("/api/export").then(j),
   restoreJSON: (data) => fetch("/api/restore", jsonReq("POST", data)).then(j),
+
+  bulkTag: (tradeIds, tagIds, op) => fetch("/api/trades/bulk-tags", jsonReq("POST", { tradeIds, tagIds, op })).then(j),
 };

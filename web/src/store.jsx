@@ -45,6 +45,7 @@ export function StoreProvider({ children }) {
     importUndo: async (batchId) => { const r = await api.importUndo(batchId); await reload(); return r; },
     exportJSON: api.exportJSON,
     restoreJSON: async (data) => { const r = await api.restoreJSON(data); await reload(); return r; },
+    bulkTag: async (tradeIds, tagIds, op) => { const r = await api.bulkTag(tradeIds, tagIds, op); await reload(); return r; },
   }), [reload, toast]);
 
   const value = { ...data, ready, error, toastMsg, ...actions };
