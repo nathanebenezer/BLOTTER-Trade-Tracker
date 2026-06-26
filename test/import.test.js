@@ -1,6 +1,7 @@
 /* ============================================================ *
- *  Broker-import tests — parser + reconstruction against the real
- *  fixture (sample_broker_export.xls) plus synthetic edge cases.
+ *  Broker-import tests — parser + reconstruction against the small
+ *  committed fixture (sample_broker_export.xls) plus an inline
+ *  synthetic broker export for shorts / non-executions / ignore.
  *  Engine tests stay green independently.
  * ============================================================ */
 import { test } from "node:test";
@@ -13,8 +14,31 @@ import {
 import { computeTrade } from "../shared/engine.js";
 
 const fixture = readFileSync(new URL("../sample_broker_export.xls", import.meta.url), "utf8");
-const fixture5 = readFileSync(new URL("../ExcelReport__5_.xls", import.meta.url), "utf8");
-const fixture6 = readFileSync(new URL("../ExcelReport (6).xls", import.meta.url), "utf8");
+
+// Inline synthetic broker export — replaces the personal ExcelReport*.xls files
+// (removed from the repo). Tab-delimited KNOWN_HEADER columns; mixes stock
+// buys/sells, sell-from-flat shorts, and non-execution rows that must be skipped.
+const H = "trade_dt\tcurrency\tacct_type\ttrd_type\tsymbol\tdispdescr\tqty\tprice\tn_amt";
+const R = (dt, trd, sym, qty, price) => [dt, "USD", "MARGIN", trd, sym, "desc", qty, price, ""].join("\t");
+const fixtureMixed = [
+  H,
+  R("5/1/2026", "Buy (Stock)", "SGOV", 100, 50),
+  R("5/2/2026", "Buy (Stock)", "SGOV", 50, 51),
+  R("5/3/2026", "Sell (Stock)", "SGOV", -150, 52),   // SGOV: long round-trip (×3 execs)
+  R("5/1/2026", "Sell (Stock)", "APPS", -21, 10),
+  R("5/2/2026", "Sell (Stock)", "APPS", -19, 10),
+  R("5/3/2026", "Sell (Stock)", "APPS", -17, 10),
+  R("5/4/2026", "Sell (Stock)", "APPS", -79, 10),    // APPS: sells from flat → short (136 sh)
+  R("5/1/2026", "Sell (Stock)", "INOD", -30, 5),
+  R("5/2/2026", "Sell (Stock)", "INOD", -20, 5),     // INOD: short
+  R("5/1/2026", "Sell (Stock)", "OSS", -40, 8),      // OSS: short
+  R("5/1/2026", "Buy (Stock)", "QQQ", 10, 100),
+  R("5/2/2026", "Sell (Stock)", "QQQ", -10, 101),    // QQQ: long round-trip
+  R("5/1/2026", "Journal Entry", "", 0, 0),
+  R("5/1/2026", "Credit/Margin Interest", "", 0, 0),
+  R("5/1/2026", "OMS/Prop Fee", "", 0, 0),
+  R("5/1/2026", "Buy (Option)", "AAPL", 1, 2),       // option → skipped (stocks only)
+].join("\n");
 
 test("helpers — number cleaning + date conversion", () => {
   assert.equal(cleanNumber('"2,209.80"'), 2209.80);
@@ -53,13 +77,6 @@ test("parse — tolerates a trailing empty column from a trailing delimiter", ()
   assert.equal(executions.length, 1);
   assert.equal(executions[0].symbol, "SGOV");
   assert.equal(executions[0].shares, 526);
-});
-
-test("ExcelReport(6) — real file with trailing tab columns imports cleanly", () => {
-  const { executions, skipped } = parseExecutions(fixture6);
-  assert.ok(executions.length > 0);
-  assert.ok(executions.every((e) => e.symbol && (e.side === "buy" || e.side === "sell")));
-  assert.ok(skipped.every((s) => typeof s.reason === "string"));
 });
 
 test("reconstruct — fixture → QQQ#1 closed, QQQ#2 closed, BFLY open", () => {
@@ -121,25 +138,24 @@ test("reconstruct — flip through zero splits and flags for review", () => {
   assert.equal(newTrades[0].fills[0].shares, 50);
 });
 
-/* ---------- ExcelReport (5): non-executions + shorts + ignore ---------- */
+/* ---------- mixed fixture: non-executions + shorts + ignore ---------- */
 
-test("ExcelReport(5) — only executions parse; fees/interest/journal skipped", () => {
-  const { executions, skipped } = parseExecutions(fixture5);
-  assert.equal(executions.length, 26);
-  assert.equal(skipped.length, 8);
-  // every execution is a real stock trade
+test("mixed — only stock executions parse; fees/interest/journal/option skipped", () => {
+  const { executions, skipped } = parseExecutions(fixtureMixed);
+  assert.equal(executions.length, 12);            // SGOV×3, APPS×4, INOD×2, OSS×1, QQQ×2
+  assert.equal(skipped.length, 4);                // journal, interest, fee, option
   assert.ok(executions.every((e) => e.symbol && (e.side === "buy" || e.side === "sell")));
-  // the non-trade rows were recognised and skipped (none of these is a trade)
   const reasons = skipped.map((s) => s.reason).join(" | ");
   assert.match(reasons, /Journal Entry/i);
   assert.match(reasons, /Credit\/Margin Interest/i);
   assert.match(reasons, /OMS\/Prop Fee/i);
+  assert.match(reasons, /option/i);
 });
 
-test("ExcelReport(5) — sell-only input reconstructs as genuine shorts (unflagged)", () => {
-  const { executions } = parseExecutions(fixture5);
+test("mixed — sell-from-flat input reconstructs as genuine shorts (unflagged)", () => {
+  const { executions } = parseExecutions(fixtureMixed);
   const { newTrades, extendedTrades } = reconstruct(executions, {});
-  assert.equal(newTrades.length, 9);              // SGOV,ONDS,INOD,FLNC,OSS,APPS,QQQ×2,BFLY
+  assert.equal(newTrades.length, 5);              // SGOV, APPS, INOD, OSS, QQQ
   assert.equal(extendedTrades.length, 0);
   assert.equal(newTrades.filter((t) => t.flagged).length, 0);  // no flip-through-zero here
 
@@ -154,18 +170,18 @@ test("ExcelReport(5) — sell-only input reconstructs as genuine shorts (unflagg
   assert.equal(newTrades.find((t) => t.symbol === "OSS").direction, "short");
 });
 
-test("ExcelReport(5) — ignoring a symbol drops only its executions/trades", () => {
-  const { executions } = parseExecutions(fixture5);
+test("mixed — ignoring a symbol drops only its executions/trades", () => {
+  const { executions } = parseExecutions(fixtureMixed);
   const syms = distinctSymbols(executions);
   const sgov = syms.find((s) => s.symbol === "SGOV");
-  assert.ok(sgov && sgov.count === 9);
+  assert.ok(sgov && sgov.count === 3);
 
   const { kept, ignored } = applyIgnore(executions, ["sgov"]); // case-insensitive
-  assert.equal(ignored.length, 9);
+  assert.equal(ignored.length, 3);
   assert.ok(ignored.every((e) => e.symbol === "SGOV"));
   assert.ok(kept.every((e) => e.symbol !== "SGOV"));
 
   const { newTrades } = reconstruct(kept, {});
-  assert.equal(newTrades.length, 8);              // 9 minus SGOV
+  assert.equal(newTrades.length, 4);              // 5 minus SGOV
   assert.ok(!newTrades.some((t) => t.symbol === "SGOV"));
 });
