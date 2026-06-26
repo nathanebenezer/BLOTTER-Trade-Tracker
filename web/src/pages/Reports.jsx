@@ -3,7 +3,9 @@ import { useStore } from "../store.jsx";
 import { selectedClosed, realisedEvents } from "../lib/filter.js";
 import { computeStats } from "../lib/stats.js";
 import { equitySeries } from "../lib/equity.js";
+import { byDayOfWeek } from "../lib/breakdowns.js";
 import EquityChart from "../components/EquityChart.jsx";
+import BarChart from "../components/BarChart.jsx";
 import TagBreakdown from "../components/TagBreakdown.jsx";
 import { fMoney, fInt, fR, cls } from "../lib/format.js";
 
@@ -21,9 +23,10 @@ function Card({ k, v, vc, sub }) {
 
 export default function Reports({ filter }) {
   const { trades, meta, tagGroups } = useStore();
-  const [tab, setTab] = useState("detailed");   // detailed | tags
+  const [tab, setTab] = useState("detailed");   // detailed | breakdowns | tags
   const [eqMode, setEqMode] = useState("dollar");
   const [eqScope, setEqScope] = useState("all"); // all | closed
+  const [bMode, setBMode] = useState("dollar");  // breakdowns: dollar | r
 
   const closed = selectedClosed(trades, filter);
   const s = computeStats(closed);
@@ -39,6 +42,14 @@ export default function Reports({ filter }) {
       </div>
     );
   }
+
+  const bIsR = bMode === "r";
+  const dowBars = byDayOfWeek(allEvents).map((d) => ({
+    label: d.label,
+    value: bIsR ? d.r : d.pnl,
+    sub: `${d.count} exit${d.count !== 1 ? "s" : ""}`,
+  }));
+  const bFmt = bIsR ? fR : (v) => fMoney(v, true);
 
   const pf = s.profitFactor;
   const grid = (
@@ -67,6 +78,7 @@ export default function Reports({ filter }) {
     <>
       <div className="seg" style={{ display: "inline-flex", marginBottom: 16 }}>
         <button className={tab === "detailed" ? "on" : ""} onClick={() => setTab("detailed")}>Detailed</button>
+        <button className={tab === "breakdowns" ? "on" : ""} onClick={() => setTab("breakdowns")}>Breakdowns</button>
         <button className={tab === "tags" ? "on" : ""} onClick={() => setTab("tags")}>Tags</button>
       </div>
 
@@ -101,6 +113,21 @@ export default function Reports({ filter }) {
             </div>
           </div>
         </>
+      ) : tab === "breakdowns" ? (
+        <div className="panel">
+          <div className="head">
+            <h2>Net P&amp;L by day of week</h2>
+            <span className="meta">realised P&amp;L, by the day each exit occurred</span>
+            <div className="spacer" style={{ flex: 1 }} />
+            <div className="seg">
+              <button className={bMode === "dollar" ? "on" : ""} onClick={() => setBMode("dollar")}>$</button>
+              <button className={bMode === "r" ? "on" : ""} onClick={() => setBMode("r")}>R</button>
+            </div>
+          </div>
+          <div className="body">
+            <BarChart bars={dowBars} fmt={bFmt} />
+          </div>
+        </div>
       ) : (
         <TagBreakdown closed={closed} tagGroups={tagGroups} />
       )}
