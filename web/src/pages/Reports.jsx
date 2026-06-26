@@ -3,7 +3,7 @@ import { useStore } from "../store.jsx";
 import { selectedClosed, realisedEvents } from "../lib/filter.js";
 import { computeStats } from "../lib/stats.js";
 import { equitySeries } from "../lib/equity.js";
-import { byDayOfWeek } from "../lib/breakdowns.js";
+import { byDayOfWeek, byMonth, tradeHistogram } from "../lib/breakdowns.js";
 import EquityChart from "../components/EquityChart.jsx";
 import BarChart from "../components/BarChart.jsx";
 import TagBreakdown from "../components/TagBreakdown.jsx";
@@ -27,6 +27,7 @@ export default function Reports({ filter }) {
   const [eqMode, setEqMode] = useState("dollar");
   const [eqScope, setEqScope] = useState("all"); // all | closed
   const [bMode, setBMode] = useState("dollar");  // breakdowns: dollar | r
+  const [bYear, setBYear] = useState(new Date().getFullYear()); // monthly breakdown year
 
   const closed = selectedClosed(trades, filter);
   const s = computeStats(closed);
@@ -44,12 +45,30 @@ export default function Reports({ filter }) {
   }
 
   const bIsR = bMode === "r";
+  const bFmt = bIsR ? fR : (v) => fMoney(v, true);
+  const exitSub = (n) => `${n} exit${n !== 1 ? "s" : ""}`;
+
   const dowBars = byDayOfWeek(allEvents).map((d) => ({
     label: d.label,
     value: bIsR ? d.r : d.pnl,
-    sub: `${d.count} exit${d.count !== 1 ? "s" : ""}`,
+    sub: exitSub(d.count),
   }));
-  const bFmt = bIsR ? fR : (v) => fMoney(v, true);
+  const monthBars = byMonth(allEvents, bYear).map((m) => ({
+    label: m.label,
+    value: bIsR ? m.r : m.pnl,
+    sub: exitSub(m.count),
+  }));
+
+  // outcome distribution — one closed trade per data point, bins colored win/red loss/green
+  const hist = tradeHistogram(closed, bMode);
+  const POS = "#3fb389", NEG = "#e0654e";
+  const shortVal = (v) => (bIsR ? (v > 0 ? "+" : "") + v.toFixed(1) + "R" : (v < 0 ? "-" : "") + "$" + Math.abs(Math.round(v)));
+  const histBars = hist.bins.map((b) => ({
+    label: shortVal(b.mid),
+    value: b.count,
+    color: b.lo >= -1e-9 ? POS : NEG,
+    sub: `${bIsR ? fR(b.lo) : fMoney(b.lo)} to ${bIsR ? fR(b.hi) : fMoney(b.hi)} · ${b.count} trade${b.count !== 1 ? "s" : ""}`,
+  }));
 
   const pf = s.profitFactor;
   const grid = (
@@ -114,20 +133,51 @@ export default function Reports({ filter }) {
           </div>
         </>
       ) : tab === "breakdowns" ? (
-        <div className="panel">
-          <div className="head">
-            <h2>Net P&amp;L by day of week</h2>
-            <span className="meta">realised P&amp;L, by the day each exit occurred</span>
+        <>
+          <div style={{ display: "flex", alignItems: "center", marginBottom: 12 }}>
+            <span className="meta">Realised P&amp;L grouped — switch between dollars and R.</span>
             <div className="spacer" style={{ flex: 1 }} />
             <div className="seg">
               <button className={bMode === "dollar" ? "on" : ""} onClick={() => setBMode("dollar")}>$</button>
               <button className={bMode === "r" ? "on" : ""} onClick={() => setBMode("r")}>R</button>
             </div>
           </div>
-          <div className="body">
-            <BarChart bars={dowBars} fmt={bFmt} />
+
+          <div className="panel">
+            <div className="head">
+              <h2>By day of week</h2>
+              <span className="meta">by the day each exit occurred</span>
+            </div>
+            <div className="body"><BarChart bars={dowBars} fmt={bFmt} /></div>
           </div>
-        </div>
+
+          <div className="panel" style={{ marginTop: 14 }}>
+            <div className="head">
+              <h2>By month</h2>
+              <div className="spacer" style={{ flex: 1 }} />
+              <div className="seg">
+                <button onClick={() => setBYear((y) => y - 1)}>‹</button>
+                <button className="on" style={{ pointerEvents: "none" }}>{bYear}</button>
+                <button onClick={() => setBYear((y) => y + 1)}>›</button>
+              </div>
+            </div>
+            <div className="body"><BarChart bars={monthBars} fmt={bFmt} /></div>
+          </div>
+
+          <div className="panel" style={{ marginTop: 14 }}>
+            <div className="head">
+              <h2>Outcome distribution</h2>
+              <span className="meta">
+                {hist.total} closed trade{hist.total !== 1 ? "s" : ""}
+                {bIsR && hist.skipped ? ` · ${hist.skipped} without a stop (no R)` : ""}
+              </span>
+            </div>
+            <div className="body">
+              {hist.bins.length ? <BarChart bars={histBars} fmt={fInt} />
+                : <div className="pagestub" style={{ padding: "26px 20px" }}><b>No closed trades to distribute</b>{bIsR ? "Set stops so trades have an R multiple." : "Close a trade to see its outcome here."}</div>}
+            </div>
+          </div>
+        </>
       ) : (
         <TagBreakdown closed={closed} tagGroups={tagGroups} />
       )}

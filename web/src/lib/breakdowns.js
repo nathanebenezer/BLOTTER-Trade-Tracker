@@ -27,3 +27,70 @@ export function byDayOfWeek(events) {
   }
   return DOW_ORDER.map((i) => acc.get(i));
 }
+
+const MO = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// net realised P&L / R / count by month (Jan..Dec) of a given calendar year
+export function byMonth(events, year) {
+  const rows = MO.map((label, m) => ({ month: m, label, pnl: 0, r: 0, count: 0 }));
+  for (const e of events || []) {
+    const y = Number(e.date.slice(0, 4));
+    if (y !== year) continue;
+    const m = Number(e.date.slice(5, 7)) - 1;
+    if (m < 0 || m > 11) continue;
+    rows[m].pnl += e.pnl;
+    rows[m].r += e.r || 0;
+    rows[m].count += 1;
+  }
+  return rows;
+}
+
+// distinct years present in the event stream, ascending
+export function eventYears(events) {
+  const s = new Set();
+  for (const e of events || []) s.add(Number(e.date.slice(0, 4)));
+  return [...s].sort((a, b) => a - b);
+}
+
+// a "nice" round bucket width (1/2/5 × 10^n) for ~target buckets across a range
+function niceStep(range, target = 10) {
+  const raw = (range || 1) / target;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const norm = raw / mag;
+  const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+  return step * mag;
+}
+
+/* Outcome distribution — ONE data point per closed trade (its total realised
+   $ or R), bucketed into nice fixed-width bins. Bins align to a multiple of the
+   width so zero is always a bin EDGE → every bin is cleanly a win or loss bin.
+   `closed` is the selectedClosed array ({ t, c } with c = computeTrade()).
+   In R mode, trades with no risk (rMultiple == null) are skipped + counted. */
+export function tradeHistogram(closed, mode = "dollar") {
+  const isR = mode === "r";
+  const vals = [];
+  let skipped = 0;
+  for (const o of closed || []) {
+    const v = isR ? o.c.rMultiple : o.c.realized;
+    if (v == null || isNaN(v)) { skipped++; continue; }
+    vals.push(v);
+  }
+  if (!vals.length) return { bins: [], skipped, total: 0, width: 0 };
+
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const width = niceStep((max - min) || Math.abs(max) || 1);
+  const start = Math.floor(min / width) * width;
+  let nb = Math.max(1, Math.ceil((max - start) / width));
+  if (start + nb * width <= max + 1e-9) nb++;
+
+  const bins = Array.from({ length: nb }, (_, i) => {
+    const lo = start + i * width;
+    return { lo, hi: lo + width, mid: lo + width / 2, count: 0 };
+  });
+  for (const v of vals) {
+    let i = Math.floor((v - start) / width);
+    if (i < 0) i = 0; else if (i >= nb) i = nb - 1;
+    bins[i].count++;
+  }
+  return { bins, skipped, total: vals.length, width };
+}

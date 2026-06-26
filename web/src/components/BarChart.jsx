@@ -37,10 +37,14 @@ export default function BarChart({ bars, fmt = (v) => String(v), height = 300 })
   };
 
   const grid = [];
+  let lastLabel = null;
   for (let g = 0; g <= 4; g++) {
-    const v = lo + (hi - lo) * g / 4, y = Y(v);
+    const v = lo + (hi - lo) * g / 4, y = Y(v), lab = compact(v);
     grid.push(<line key={"gl" + g} x1={pad.l} y1={y.toFixed(1)} x2={W - pad.r} y2={y.toFixed(1)} stroke="#202B32" strokeWidth="1" />);
-    grid.push(<text key={"gt" + g} x={pad.l - 8} y={(y + 4).toFixed(1)} fill="#647580" fontSize="11" textAnchor="end" fontFamily="ui-monospace,monospace">{compact(v)}</text>);
+    if (lab !== lastLabel) {  // skip duplicate labels (e.g. small integer-count axes)
+      grid.push(<text key={"gt" + g} x={pad.l - 8} y={(y + 4).toFixed(1)} fill="#647580" fontSize="11" textAnchor="end" fontFamily="ui-monospace,monospace">{lab}</text>);
+      lastLabel = lab;
+    }
   }
 
   return (
@@ -51,7 +55,7 @@ export default function BarChart({ bars, fmt = (v) => String(v), height = 300 })
         {bars.map((b, i) => {
           const yv = Y(b.value);
           const top = Math.min(yv, y0), h = Math.abs(yv - y0);
-          const fill = b.value >= 0 ? POS : NEG;
+          const fill = b.color || (b.value >= 0 ? POS : NEG);
           const lblY = b.value >= 0 ? top - 6 : top + h + 14;
           return (
             <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }}>

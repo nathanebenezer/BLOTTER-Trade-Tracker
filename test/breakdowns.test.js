@@ -1,7 +1,7 @@
 /* Breakdowns aggregations — operate on the realised-event stream. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { byDayOfWeek } from "../web/src/lib/breakdowns.js";
+import { byDayOfWeek, byMonth, tradeHistogram } from "../web/src/lib/breakdowns.js";
 
 const near = (a, b, eps = 1e-9) =>
   assert.ok(Math.abs(a - b) <= eps, `expected ${a} ≈ ${b}`);
@@ -32,4 +32,51 @@ test("byDayOfWeek — handles an empty event list", () => {
   const rows = byDayOfWeek([]);
   assert.equal(rows.length, 7);
   assert.ok(rows.every((r) => r.pnl === 0 && r.count === 0));
+});
+
+test("byMonth — Jan..Dec for the chosen year only", () => {
+  const evs = [
+    { date: "2026-01-15", pnl: 100, r: 1 },
+    { date: "2026-01-20", pnl: 50, r: 0.5 },
+    { date: "2026-03-10", pnl: -30, r: -0.3 },
+    { date: "2025-03-10", pnl: 999, r: 9 },   // different year → excluded
+  ];
+  const rows = byMonth(evs, 2026);
+  assert.equal(rows.length, 12);
+  assert.equal(rows[0].label, "Jan");
+  near(rows[0].pnl, 150); assert.equal(rows[0].count, 2);
+  near(rows[2].pnl, -30); assert.equal(rows[2].count, 1);
+  near(rows[1].pnl, 0); assert.equal(rows[1].count, 0); // Feb empty
+  // the 2025 event must not leak in
+  assert.equal(rows.reduce((a, r) => a + r.count, 0), 3);
+});
+
+test("tradeHistogram — bins closed trades by $ with zero on a bin edge", () => {
+  const closed = [
+    { c: { realized: -150, rMultiple: -1.5 } },
+    { c: { realized: -50, rMultiple: -0.5 } },
+    { c: { realized: 50, rMultiple: 0.5 } },
+    { c: { realized: 250, rMultiple: 2.5 } },
+    { c: { realized: 280, rMultiple: 2.8 } },
+  ];
+  const h = tradeHistogram(closed, "dollar");
+  assert.equal(h.total, 5);
+  assert.equal(h.skipped, 0);
+  // every bin edge is a multiple of the width → zero is an edge, no bin straddles 0
+  assert.ok(h.bins.every((b) => b.lo >= 0 || b.hi <= 1e-9));
+  assert.equal(h.bins.reduce((a, b) => a + b.count, 0), 5);
+  // a win bin (lo>=0) and a loss bin (hi<=0) both have trades
+  assert.ok(h.bins.some((b) => b.lo >= 0 && b.count > 0));
+  assert.ok(h.bins.some((b) => b.hi <= 1e-9 && b.count > 0));
+});
+
+test("tradeHistogram — R mode skips trades with no R multiple", () => {
+  const closed = [
+    { c: { realized: 100, rMultiple: 1 } },
+    { c: { realized: -100, rMultiple: -1 } },
+    { c: { realized: 40, rMultiple: null } },  // no stop → no R
+  ];
+  const h = tradeHistogram(closed, "r");
+  assert.equal(h.total, 2);
+  assert.equal(h.skipped, 1);
 });
