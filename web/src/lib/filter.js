@@ -134,27 +134,28 @@ export function dayActivity(trades, filter) {
     if (filter.result !== "all" && !(filter.result === "win" ? c.realized > 0 : c.realized < 0)) continue;
 
     // group this trade's in-range fills by their own date (volume + exec count)
-    const perDate = new Map(); // date -> { pnl, shares, execs }
+    const perDate = new Map(); // date -> { pnl, r, shares, execs }
     for (const f of t.fills || []) {
       if (!f.date || f.price == null || f.shares == null || f.shares <= 0) continue;
       if (!inRange(f.date, lo, hi)) continue;
       let d = perDate.get(f.date);
-      if (!d) { d = { pnl: 0, shares: 0, execs: 0 }; perDate.set(f.date, d); }
+      if (!d) { d = { pnl: 0, r: 0, shares: 0, execs: 0 }; perDate.set(f.date, d); }
       d.shares += f.shares; d.execs += 1;
     }
-    // attribute realised P&L to each exit's own date (engine is the source of truth)
+    // attribute realised P&L (and R) to each exit's own date (engine is the source of truth)
     for (const e of c.exits) {
       const d = perDate.get(e.date);
-      if (d) d.pnl += e.pnl;
+      if (d) { d.pnl += e.pnl; d.r += c.risk && c.risk > 0 ? e.pnl / c.risk : 0; }
     }
     for (const [date, d] of perDate) {
       let v = acc.get(date);
-      if (!v) { v = { pnl: 0, ids: new Set(), rows: [] }; acc.set(date, v); }
+      if (!v) { v = { pnl: 0, r: 0, ids: new Set(), rows: [] }; acc.set(date, v); }
       v.pnl += d.pnl;
+      v.r += d.r;
       v.ids.add(t.id);
       v.rows.push({
         tradeId: t.id, ticker: t.ticker, direction: t.direction || "long",
-        pnl: d.pnl, shares: d.shares, execs: d.execs, status: c.status,
+        pnl: d.pnl, r: d.r, shares: d.shares, execs: d.execs, status: c.status,
         opened: c.openDate === date,           // this day is the trade's first entry
         closed: c.closeDate === date,          // the trade went flat on this day
         held: c.held,                          // whole-trade hold in days (null until an exit exists)
@@ -165,7 +166,7 @@ export function dayActivity(trades, filter) {
   const out = new Map();
   for (const [date, v] of acc) {
     v.rows.sort((a, b) => (a.ticker < b.ticker ? -1 : a.ticker > b.ticker ? 1 : 0));
-    out.set(date, { pnl: v.pnl, count: v.ids.size, rows: v.rows });
+    out.set(date, { pnl: v.pnl, r: v.r, count: v.ids.size, rows: v.rows });
   }
   return out;
 }

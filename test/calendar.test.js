@@ -129,6 +129,29 @@ test("dayActivity — a still-open buy-only trade has null hold days", () => {
   assert.equal(row.held, null);
 });
 
+test("dayActivity — aggregates realised R per day when a stop gives the trade risk", () => {
+  // entry 10, stop 9 ⇒ risk = (10-9)*100 = 100/share·shares = 100; exit +1/sh on 50 sh = +$50 = +0.5R
+  const withStop = trade({ ticker: "RRR", stop: 9, fills: [
+    { kind: "entry", date: "2026-05-01", price: 10, shares: 100 },
+    { kind: "exit", date: "2026-05-04", price: 11, shares: 50 }] });
+  const byDay = dayActivity([withStop], defaultFilter());
+  const exit = byDay.get("2026-05-04");
+  near(exit.pnl, 50);
+  near(exit.r, 0.5);            // 50 / 100 risk
+  near(exit.rows[0].r, 0.5);
+  // the entry day realised nothing → 0 R
+  near(byDay.get("2026-05-01").r, 0);
+});
+
+test("dayActivity — R is 0 when the trade has no stop / risk", () => {
+  const noStop = trade({ ticker: "NNN", fills: [
+    { kind: "entry", date: "2026-05-01", price: 10, shares: 100 },
+    { kind: "exit", date: "2026-05-04", price: 12, shares: 100 }] });
+  const exit = dayActivity([noStop], defaultFilter()).get("2026-05-04");
+  near(exit.pnl, 200);
+  near(exit.r, 0);
+});
+
 test("dayActivity — date range bounds which fills appear", () => {
   const f = { ...defaultFilter(), preset: "custom", dateFrom: "2026-01-02", dateTo: "2026-01-31" };
   const byDay = dayActivity([scaled, openPartial, other], f);

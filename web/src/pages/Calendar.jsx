@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../store.jsx";
 import { dayActivity } from "../lib/filter.js";
-import { fMoney, fInt, cls } from "../lib/format.js";
+import { fInt, cls } from "../lib/format.js";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"];
@@ -26,6 +26,7 @@ function tint(pnl, maxAbs) {
   return pnl > 0 ? `rgba(63,179,137,${a})` : `rgba(224,101,78,${a})`;
 }
 const money0 = (n) => (n > 0 ? "+" : n < 0 ? "-" : "") + "$" + Math.abs(Math.round(n)).toLocaleString("en-US");
+const r1 = (n) => (n > 0 ? "+" : n < 0 ? "-" : "") + Math.abs(n).toFixed(1) + "R";
 
 // whole-trade hold formatted as "Nd" (en-dash when no exit has happened yet)
 const dur = (d) => (d == null ? "—" : `${d}d`);
@@ -42,10 +43,20 @@ export default function Calendar({ filter, onOpen }) {
   const now = new Date();
   const [view, setView] = useState({ mode: "year", year: now.getFullYear(), month: now.getMonth() });
   const [selDay, setSelDay] = useState(null); // "YYYY-MM-DD" of the day whose executions are shown
+  const [calMode, setCalMode] = useState("dollar"); // $ | R
 
   const byDay = useMemo(() => dayActivity(trades, filter), [trades, filter]);
   const selData = selDay ? byDay.get(selDay) : null;
   const openTrade = (id) => { const t = trades.find((x) => x.id === id); if (t) onOpen?.(t); };
+
+  const metric = calMode === "r" ? "r" : "pnl"; // which dayActivity field to plot
+  const fmtVal = calMode === "r" ? r1 : money0;
+  const ModeToggle = (
+    <div className="seg">
+      <button className={calMode === "dollar" ? "on" : ""} onClick={() => setCalMode("dollar")}>$</button>
+      <button className={calMode === "r" ? "on" : ""} onClick={() => setCalMode("r")}>R</button>
+    </div>
+  );
 
   /* ---------- year overview ---------- */
   const year = useMemo(() => {
@@ -57,15 +68,15 @@ export default function Calendar({ filter, onOpen }) {
       let total = 0, count = 0;
       for (let d = 1; d <= dim; d++) {
         const v = byDay.get(dayKey(view.year, m, d));
-        const pnl = v?.pnl || 0;
-        total += pnl; count += v?.count || 0;
-        if (Math.abs(pnl) > maxAbs) maxAbs = Math.abs(pnl);
-        days.push({ d, pnl });
+        const val = v?.[metric] || 0;
+        total += val; count += v?.count || 0;
+        if (Math.abs(val) > maxAbs) maxAbs = Math.abs(val);
+        days.push({ d, val });
       }
       months.push({ m, total, count, days, lead: firstWeekday(view.year, m) });
     }
     return { months, maxAbs };
-  }, [byDay, view.year]);
+  }, [byDay, view.year, metric]);
 
   /* ---------- month drill-in ---------- */
   const month = useMemo(() => {
@@ -76,20 +87,20 @@ export default function Calendar({ filter, onOpen }) {
     let maxAbs = 0;
     for (let d = 1; d <= dim; d++) {
       const v = byDay.get(dayKey(y, m, d));
-      const pnl = v?.pnl || 0;
-      if (Math.abs(pnl) > maxAbs) maxAbs = Math.abs(pnl);
-      cells.push({ d, pnl, count: v?.count || 0 });
+      const val = v?.[metric] || 0;
+      if (Math.abs(val) > maxAbs) maxAbs = Math.abs(val);
+      cells.push({ d, val, count: v?.count || 0 });
     }
     while (cells.length % 7 !== 0) cells.push(null);
     const weeks = [];
     for (let i = 0; i < cells.length; i += 7) {
       const c = cells.slice(i, i + 7);
-      weeks.push({ cells: c, pnl: c.reduce((a, x) => a + (x?.pnl || 0), 0), count: c.reduce((a, x) => a + (x?.count || 0), 0) });
+      weeks.push({ cells: c, val: c.reduce((a, x) => a + (x?.val || 0), 0), count: c.reduce((a, x) => a + (x?.count || 0), 0) });
     }
-    const total = cells.reduce((a, x) => a + (x?.pnl || 0), 0);
+    const total = cells.reduce((a, x) => a + (x?.val || 0), 0);
     const count = cells.reduce((a, x) => a + (x?.count || 0), 0);
     return { weeks, total, count, maxAbs };
-  }, [byDay, view.year, view.month]);
+  }, [byDay, view.year, view.month, metric]);
 
   const stepMonth = (delta) => { setSelDay(null); setView((v) => {
     let m = v.month + delta, y = v.year;
@@ -105,7 +116,8 @@ export default function Calendar({ filter, onOpen }) {
           <h2>{view.year}</h2>
           <button className="btn sm" onClick={() => setView((v) => ({ ...v, year: v.year + 1 }))}>›</button>
           <div className="spacer" style={{ flex: 1 }} />
-          <span className="meta">click a month to drill in</span>
+          <span className="meta" style={{ marginRight: 8 }}>click a month to drill in</span>
+          {ModeToggle}
         </div>
         <div className="body">
           <div className="cal-year">
@@ -113,12 +125,12 @@ export default function Calendar({ filter, onOpen }) {
               <button key={mo.m} className="cal-tile" onClick={() => setView({ mode: "month", year: view.year, month: mo.m })}>
                 <div className="cal-tile-head">
                   <span className="cal-tile-name">{MONTHS_SHORT[mo.m]}</span>
-                  <span className={"num " + cls(mo.total)}>{mo.count ? money0(mo.total) : "—"}</span>
+                  <span className={"num " + cls(mo.total)}>{mo.count ? fmtVal(mo.total) : "—"}</span>
                 </div>
                 <div className="cal-mini">
                   {Array.from({ length: mo.lead }).map((_, i) => <span key={"b" + i} className="cal-mini-cell" style={{ background: "transparent" }} />)}
                   {mo.days.map((d) => (
-                    <span key={d.d} className="cal-mini-cell" style={{ background: d.pnl ? tint(d.pnl, year.maxAbs) : "rgba(255,255,255,0.04)" }} />
+                    <span key={d.d} className="cal-mini-cell" style={{ background: d.val ? tint(d.val, year.maxAbs) : "rgba(255,255,255,0.04)" }} />
                   ))}
                 </div>
               </button>
@@ -138,9 +150,10 @@ export default function Calendar({ filter, onOpen }) {
         <h2>{MONTHS[view.month]} {view.year}</h2>
         <button className="btn sm" onClick={() => stepMonth(1)}>›</button>
         <div className="spacer" style={{ flex: 1 }} />
-        <span className="meta">
-          Month <b className={"num " + cls(month.total)}>{fMoney(month.total, true)}</b> · {fInt(month.count)} trade{month.count !== 1 ? "s" : ""}
+        <span className="meta" style={{ marginRight: 8 }}>
+          Month <b className={"num " + cls(month.total)}>{fmtVal(month.total)}</b> · {fInt(month.count)} trade{month.count !== 1 ? "s" : ""}
         </span>
+        {ModeToggle}
       </div>
       <div className="body">
         <div className="cal-month">
@@ -157,14 +170,14 @@ export default function Calendar({ filter, onOpen }) {
                 <div
                   key={ci}
                   className={"cal-day" + (c ? "" : " empty") + (active ? " clickable" : "") + (key && key === selDay ? " selday" : "")}
-                  style={{ background: c ? tint(c.pnl, month.maxAbs) : undefined }}
+                  style={{ background: c ? tint(c.val, month.maxAbs) : undefined }}
                   onClick={active ? () => setSelDay((s) => (s === key ? null : key)) : undefined}
                 >
                   {c && (
                     <>
                       <span className="dnum">{c.d}</span>
                       {c.count > 0 && <>
-                        <span className={"dpnl num " + cls(c.pnl)}>{money0(c.pnl)}</span>
+                        <span className={"dpnl num " + cls(c.val)}>{fmtVal(c.val)}</span>
                         <span className="dcount">{c.count} trade{c.count !== 1 ? "s" : ""}</span>
                       </>}
                     </>
@@ -174,7 +187,7 @@ export default function Calendar({ filter, onOpen }) {
               })}
               <div className="cal-week-total">
                 {wk.count > 0 ? <>
-                  <span className={"num " + cls(wk.pnl)}>{money0(wk.pnl)}</span>
+                  <span className={"num " + cls(wk.val)}>{fmtVal(wk.val)}</span>
                   <span className="dcount">{wk.count} trade{wk.count !== 1 ? "s" : ""}</span>
                 </> : <span className="dcount">—</span>}
               </div>
@@ -188,9 +201,10 @@ export default function Calendar({ filter, onOpen }) {
       <div className="panel cal-day-panel">
         <div className="head">
           <h2>{dayLabel(selDay)}</h2>
-          <span className="meta">
-            <b className={"num " + cls(selData.pnl)}>{money0(selData.pnl)}</b> · {fInt(selData.count)} trade{selData.count !== 1 ? "s" : ""}
+          <span className="meta" style={{ marginRight: 8 }}>
+            <b className={"num " + cls(selData[metric])}>{fmtVal(selData[metric])}</b> · {fInt(selData.count)} trade{selData.count !== 1 ? "s" : ""}
           </span>
+          {ModeToggle}
           <div className="spacer" style={{ flex: 1 }} />
           <button className="btn sm ghost" onClick={() => setSelDay(null)}>Close</button>
         </div>
@@ -211,7 +225,7 @@ export default function Calendar({ filter, onOpen }) {
                 <tr key={row.tradeId} onClick={() => openTrade(row.tradeId)}>
                   <td className="l"><span className={"daytime " + st}>{st}</span></td>
                   <td className="l"><b className="tick">{row.ticker}</b></td>
-                  <td className={"num " + cls(row.pnl)}>{row.pnl ? money0(row.pnl) : "$0"}</td>
+                  <td className={"num " + cls(row[metric])}>{fmtVal(row[metric])}</td>
                   <td className="l">{setups.length ? setups.map((n) => <span key={n} className="pill">{n}</span>) : <span className="muted">—</span>}</td>
                   <td className="l"><span className={"dir " + (row.direction === "short" ? "short" : "long")}>{row.direction === "short" ? "Short" : "Long"}</span></td>
                   <td className="num">{fInt(row.shares)}</td>
