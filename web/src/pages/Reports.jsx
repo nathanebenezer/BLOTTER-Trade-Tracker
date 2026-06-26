@@ -3,7 +3,7 @@ import { useStore } from "../store.jsx";
 import { selectedClosed, realisedEvents } from "../lib/filter.js";
 import { computeStats } from "../lib/stats.js";
 import { equitySeries } from "../lib/equity.js";
-import { byDayOfWeek, byMonth, tradeHistogram } from "../lib/breakdowns.js";
+import { byDayOfWeek, byMonth, tradeSequence } from "../lib/breakdowns.js";
 import EquityChart from "../components/EquityChart.jsx";
 import BarChart from "../components/BarChart.jsx";
 import TagBreakdown from "../components/TagBreakdown.jsx";
@@ -59,15 +59,12 @@ export default function Reports({ filter }) {
     sub: exitSub(m.count),
   }));
 
-  // outcome distribution — one closed trade per data point, bins colored win/red loss/green
-  const hist = tradeHistogram(closed, bMode);
-  const POS = "#3fb389", NEG = "#e0654e";
-  const shortVal = (v) => (bIsR ? (v > 0 ? "+" : "") + v.toFixed(1) + "R" : (v < 0 ? "-" : "") + "$" + Math.abs(Math.round(v)));
-  const histBars = hist.bins.map((b) => ({
-    label: shortVal(b.mid),
-    value: b.count,
-    color: b.lo >= -1e-9 ? POS : NEG,
-    sub: `${bIsR ? fR(b.lo) : fMoney(b.lo)} to ${bIsR ? fR(b.hi) : fMoney(b.hi)} · ${b.count} trade${b.count !== 1 ? "s" : ""}`,
+  // per-trade gain/loss — one bar per closed trade, ordered by close date
+  const seq = tradeSequence(closed, bMode);
+  const seqBars = seq.bars.map((b) => ({
+    label: String(b.n),
+    value: b.value,
+    sub: `#${b.n} · ${b.ticker} · ${b.date}`,
   }));
 
   const pf = s.profitFactor;
@@ -166,15 +163,15 @@ export default function Reports({ filter }) {
 
           <div className="panel" style={{ marginTop: 14 }}>
             <div className="head">
-              <h2>Outcome distribution</h2>
+              <h2>Gain / loss by trade</h2>
               <span className="meta">
-                {hist.total} closed trade{hist.total !== 1 ? "s" : ""}
-                {bIsR && hist.skipped ? ` · ${hist.skipped} without a stop (no R)` : ""}
+                each closed trade in order of close date · {seq.total} trade{seq.total !== 1 ? "s" : ""}
+                {bIsR && seq.skipped ? ` · ${seq.skipped} without a stop (no R)` : ""}
               </span>
             </div>
             <div className="body">
-              {hist.bins.length ? <BarChart bars={histBars} fmt={fInt} />
-                : <div className="pagestub" style={{ padding: "26px 20px" }}><b>No closed trades to distribute</b>{bIsR ? "Set stops so trades have an R multiple." : "Close a trade to see its outcome here."}</div>}
+              {seq.bars.length ? <BarChart bars={seqBars} fmt={bFmt} showValues={false} />
+                : <div className="pagestub" style={{ padding: "26px 20px" }}><b>No closed trades yet</b>{bIsR ? "Set stops so trades have an R multiple." : "Close a trade to see it here."}</div>}
             </div>
           </div>
         </>

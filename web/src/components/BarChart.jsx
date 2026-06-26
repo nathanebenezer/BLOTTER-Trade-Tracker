@@ -6,10 +6,12 @@ import { useState } from "react";
 // No chart lib — same hand-drawn SVG approach as EquityChart.
 const POS = "#3fb389", NEG = "#e0654e";
 
-export default function BarChart({ bars, fmt = (v) => String(v), height = 300 }) {
+export default function BarChart({ bars, fmt = (v) => String(v), height = 300, showValues = true }) {
   const [hover, setHover] = useState(null);
   const W = 1000, H = height, pad = { l: 62, r: 14, t: 22, b: 30 };
   const innerW = W - pad.l - pad.r;
+  // with many bars, label only every k-th x tick so they don't overlap
+  const labelStep = Math.max(1, Math.ceil(bars.length / 20));
 
   const vals = bars.map((b) => b.value);
   let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
@@ -60,13 +62,15 @@ export default function BarChart({ bars, fmt = (v) => String(v), height = 300 })
           return (
             <g key={i} onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} style={{ cursor: "pointer" }}>
               <rect x={(cx(i) - bw / 2).toFixed(1)} y={top.toFixed(1)} width={bw.toFixed(1)} height={Math.max(h, 0.5).toFixed(1)}
-                fill={fill} opacity={hover == null || hover === i ? 0.92 : 0.5} rx="2" />
-              {b.value !== 0 && (
+                fill={fill} opacity={hover == null || hover === i ? 0.92 : 0.5} rx={bw > 4 ? 2 : 0} />
+              {showValues && b.value !== 0 && (
                 <text x={cx(i).toFixed(1)} y={lblY.toFixed(1)} fill="#9fb0ba" fontSize="11" textAnchor="middle" fontFamily="ui-monospace,monospace">
                   {compact(b.value)}
                 </text>
               )}
-              <text x={cx(i).toFixed(1)} y={H - 9} fill="#647580" fontSize="11.5" textAnchor="middle" fontFamily="system-ui">{b.label}</text>
+              {i % labelStep === 0 && (
+                <text x={cx(i).toFixed(1)} y={H - 9} fill="#647580" fontSize="11.5" textAnchor="middle" fontFamily="system-ui">{b.label}</text>
+              )}
             </g>
           );
         })}

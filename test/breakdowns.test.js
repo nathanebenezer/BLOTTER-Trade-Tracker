@@ -1,7 +1,7 @@
 /* Breakdowns aggregations — operate on the realised-event stream. */
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { byDayOfWeek, byMonth, tradeHistogram } from "../web/src/lib/breakdowns.js";
+import { byDayOfWeek, byMonth, tradeSequence } from "../web/src/lib/breakdowns.js";
 
 const near = (a, b, eps = 1e-9) =>
   assert.ok(Math.abs(a - b) <= eps, `expected ${a} ≈ ${b}`);
@@ -51,32 +51,28 @@ test("byMonth — Jan..Dec for the chosen year only", () => {
   assert.equal(rows.reduce((a, r) => a + r.count, 0), 3);
 });
 
-test("tradeHistogram — bins closed trades by $ with zero on a bin edge", () => {
+test("tradeSequence — one bar per closed trade, ordered by close date, numbered 1..N", () => {
   const closed = [
-    { c: { realized: -150, rMultiple: -1.5 } },
-    { c: { realized: -50, rMultiple: -0.5 } },
-    { c: { realized: 50, rMultiple: 0.5 } },
-    { c: { realized: 250, rMultiple: 2.5 } },
-    { c: { realized: 280, rMultiple: 2.8 } },
+    { t: { ticker: "CCC" }, c: { realized: 250, rMultiple: 2.5, closeDate: "2026-03-10" } },
+    { t: { ticker: "AAA" }, c: { realized: -150, rMultiple: -1.5, closeDate: "2026-01-05" } },
+    { t: { ticker: "BBB" }, c: { realized: 50, rMultiple: 0.5, closeDate: "2026-02-01" } },
   ];
-  const h = tradeHistogram(closed, "dollar");
-  assert.equal(h.total, 5);
-  assert.equal(h.skipped, 0);
-  // every bin edge is a multiple of the width → zero is an edge, no bin straddles 0
-  assert.ok(h.bins.every((b) => b.lo >= 0 || b.hi <= 1e-9));
-  assert.equal(h.bins.reduce((a, b) => a + b.count, 0), 5);
-  // a win bin (lo>=0) and a loss bin (hi<=0) both have trades
-  assert.ok(h.bins.some((b) => b.lo >= 0 && b.count > 0));
-  assert.ok(h.bins.some((b) => b.hi <= 1e-9 && b.count > 0));
+  const seq = tradeSequence(closed, "dollar");
+  assert.equal(seq.total, 3);
+  assert.deepEqual(seq.bars.map((b) => b.ticker), ["AAA", "BBB", "CCC"]); // by close date asc
+  assert.deepEqual(seq.bars.map((b) => b.n), [1, 2, 3]);
+  assert.deepEqual(seq.bars.map((b) => b.value), [-150, 50, 250]);
 });
 
-test("tradeHistogram — R mode skips trades with no R multiple", () => {
+test("tradeSequence — R mode uses rMultiple and skips trades with no R", () => {
   const closed = [
-    { c: { realized: 100, rMultiple: 1 } },
-    { c: { realized: -100, rMultiple: -1 } },
-    { c: { realized: 40, rMultiple: null } },  // no stop → no R
+    { t: { ticker: "AAA" }, c: { realized: 100, rMultiple: 1, closeDate: "2026-01-01" } },
+    { t: { ticker: "BBB" }, c: { realized: 40, rMultiple: null, closeDate: "2026-01-02" } }, // no stop
+    { t: { ticker: "CCC" }, c: { realized: -100, rMultiple: -1, closeDate: "2026-01-03" } },
   ];
-  const h = tradeHistogram(closed, "r");
-  assert.equal(h.total, 2);
-  assert.equal(h.skipped, 1);
+  const seq = tradeSequence(closed, "r");
+  assert.equal(seq.total, 2);
+  assert.equal(seq.skipped, 1);
+  assert.deepEqual(seq.bars.map((b) => b.value), [1, -1]);
+  assert.deepEqual(seq.bars.map((b) => b.n), [1, 2]); // renumbered over included trades
 });

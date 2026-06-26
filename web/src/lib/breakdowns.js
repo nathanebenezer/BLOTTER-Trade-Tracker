@@ -52,45 +52,23 @@ export function eventYears(events) {
   return [...s].sort((a, b) => a - b);
 }
 
-// a "nice" round bucket width (1/2/5 × 10^n) for ~target buckets across a range
-function niceStep(range, target = 10) {
-  const raw = (range || 1) / target;
-  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
-  const norm = raw / mag;
-  const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
-  return step * mag;
-}
-
-/* Outcome distribution — ONE data point per closed trade (its total realised
-   $ or R), bucketed into nice fixed-width bins. Bins align to a multiple of the
-   width so zero is always a bin EDGE → every bin is cleanly a win or loss bin.
+/* Per-trade gain/loss sequence — ONE bar per closed trade, ordered by close
+   date (trade #1 = earliest closed), height = that whole trade's total realised
+   $ or R. Lets you eyeball the distribution of wins/losses over time.
    `closed` is the selectedClosed array ({ t, c } with c = computeTrade()).
    In R mode, trades with no risk (rMultiple == null) are skipped + counted. */
-export function tradeHistogram(closed, mode = "dollar") {
+export function tradeSequence(closed, mode = "dollar") {
   const isR = mode === "r";
-  const vals = [];
-  let skipped = 0;
-  for (const o of closed || []) {
-    const v = isR ? o.c.rMultiple : o.c.realized;
-    if (v == null || isNaN(v)) { skipped++; continue; }
-    vals.push(v);
-  }
-  if (!vals.length) return { bins: [], skipped, total: 0, width: 0 };
-
-  const min = Math.min(...vals), max = Math.max(...vals);
-  const width = niceStep((max - min) || Math.abs(max) || 1);
-  const start = Math.floor(min / width) * width;
-  let nb = Math.max(1, Math.ceil((max - start) / width));
-  if (start + nb * width <= max + 1e-9) nb++;
-
-  const bins = Array.from({ length: nb }, (_, i) => {
-    const lo = start + i * width;
-    return { lo, hi: lo + width, mid: lo + width / 2, count: 0 };
+  const ordered = [...(closed || [])].sort((a, b) => {
+    const da = a.c.closeDate || "", db = b.c.closeDate || "";
+    return da < db ? -1 : da > db ? 1 : 0;
   });
-  for (const v of vals) {
-    let i = Math.floor((v - start) / width);
-    if (i < 0) i = 0; else if (i >= nb) i = nb - 1;
-    bins[i].count++;
+  const bars = [];
+  let skipped = 0;
+  for (const o of ordered) {
+    const v = isR ? o.c.rMultiple : o.c.realized;
+    if (isR && (v == null || isNaN(v))) { skipped++; continue; }
+    bars.push({ n: bars.length + 1, value: v ?? 0, ticker: o.t.ticker, date: o.c.closeDate });
   }
-  return { bins, skipped, total: vals.length, width };
+  return { bars, skipped, total: bars.length };
 }
