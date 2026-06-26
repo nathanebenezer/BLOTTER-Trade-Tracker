@@ -99,6 +99,36 @@ test("dayActivity — per-trade rows carry side, volume, exec count", () => {
   near(exitRow.pnl, 200);
 });
 
+test("dayActivity — rows carry opened/closed flags, hold days, and setup tags", () => {
+  const tagged = trade({ ticker: "DDD", tags: { setups: ["s1", "s2"], tactics: [], mistakes: [], edges: [] }, fills: [
+    { kind: "entry", date: "2026-03-01", price: 10, shares: 100 },
+    { kind: "exit", date: "2026-03-02", price: 11, shares: 40 },   // partial trim → adjusted day
+    { kind: "exit", date: "2026-03-05", price: 12, shares: 60 }] });// closes the trade
+  const byDay = dayActivity([tagged], defaultFilter());
+
+  const open = byDay.get("2026-03-01").rows[0];
+  assert.equal(open.opened, true);
+  assert.equal(open.closed, false);
+  assert.deepEqual(open.setups, ["s1", "s2"]);
+
+  const mid = byDay.get("2026-03-02").rows[0]; // neither opened nor closed this day
+  assert.equal(mid.opened, false);
+  assert.equal(mid.closed, false);
+
+  const close = byDay.get("2026-03-05").rows[0];
+  assert.equal(close.closed, true);
+  assert.equal(close.held, 4);                 // 03-01 → 03-05 = 4 days
+});
+
+test("dayActivity — a still-open buy-only trade has null hold days", () => {
+  const buyOnly = trade({ ticker: "EEE", fills: [
+    { kind: "entry", date: "2026-04-01", price: 10, shares: 100 }] });
+  const row = dayActivity([buyOnly], defaultFilter()).get("2026-04-01").rows[0];
+  assert.equal(row.opened, true);
+  assert.equal(row.closed, false);
+  assert.equal(row.held, null);
+});
+
 test("dayActivity — date range bounds which fills appear", () => {
   const f = { ...defaultFilter(), preset: "custom", dateFrom: "2026-01-02", dateTo: "2026-01-31" };
   const byDay = dayActivity([scaled, openPartial, other], f);

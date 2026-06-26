@@ -152,7 +152,14 @@ export function dayActivity(trades, filter) {
       if (!v) { v = { pnl: 0, ids: new Set(), rows: [] }; acc.set(date, v); }
       v.pnl += d.pnl;
       v.ids.add(t.id);
-      v.rows.push({ tradeId: t.id, ticker: t.ticker, direction: t.direction || "long", pnl: d.pnl, shares: d.shares, execs: d.execs, status: c.status });
+      v.rows.push({
+        tradeId: t.id, ticker: t.ticker, direction: t.direction || "long",
+        pnl: d.pnl, shares: d.shares, execs: d.execs, status: c.status,
+        opened: c.openDate === date,           // this day is the trade's first entry
+        closed: c.closeDate === date,          // the trade went flat on this day
+        held: c.held,                          // whole-trade hold in days (null until an exit exists)
+        setups: t.tags?.setups || [],          // setup-group tag ids (resolved to names in the panel)
+      });
     }
   }
   const out = new Map();

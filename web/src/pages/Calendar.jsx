@@ -27,8 +27,18 @@ function tint(pnl, maxAbs) {
 }
 const money0 = (n) => (n > 0 ? "+" : n < 0 ? "-" : "") + "$" + Math.abs(Math.round(n)).toLocaleString("en-US");
 
+// whole-trade hold formatted as "Nd" (en-dash when no exit has happened yet)
+const dur = (d) => (d == null ? "—" : `${d}d`);
+// trade's relationship to the selected day → TraderVue's "Time" column
+const dayStatus = (row) => (row.closed ? "closed" : row.opened ? "opened" : "adjusted");
+
 export default function Calendar({ filter, onOpen }) {
-  const { trades } = useStore();
+  const { trades, tagGroups } = useStore();
+  const setupName = useMemo(() => {
+    const m = new Map();
+    for (const tg of tagGroups?.setups || []) m.set(tg.id, tg.name);
+    return m;
+  }, [tagGroups]);
   const now = new Date();
   const [view, setView] = useState({ mode: "year", year: now.getFullYear(), month: now.getMonth() });
   const [selDay, setSelDay] = useState(null); // "YYYY-MM-DD" of the day whose executions are shown
@@ -187,18 +197,29 @@ export default function Calendar({ filter, onOpen }) {
         <div className="body">
           <table className="blot cal-exec">
             <thead>
-              <tr><th className="l">Symbol</th><th className="l">Side</th><th>P&amp;L</th><th>Volume</th><th>Execs</th></tr>
+              <tr>
+                <th className="l">Time</th><th className="l">Symbol</th><th>P&amp;L</th>
+                <th className="l">Tags (Setups)</th><th className="l">Side</th>
+                <th>Volume</th><th>Duration</th><th>Execs</th>
+              </tr>
             </thead>
             <tbody>
-              {selData.rows.map((row) => (
+              {selData.rows.map((row) => {
+                const setups = row.setups.map((id) => setupName.get(id)).filter(Boolean);
+                const st = dayStatus(row);
+                return (
                 <tr key={row.tradeId} onClick={() => openTrade(row.tradeId)}>
+                  <td className="l"><span className={"daytime " + st}>{st}</span></td>
                   <td className="l"><b className="tick">{row.ticker}</b></td>
-                  <td className="l"><span className={"dir " + (row.direction === "short" ? "short" : "long")}>{row.direction === "short" ? "Short" : "Long"}</span></td>
                   <td className={"num " + cls(row.pnl)}>{row.pnl ? money0(row.pnl) : "$0"}</td>
+                  <td className="l">{setups.length ? setups.map((n) => <span key={n} className="pill">{n}</span>) : <span className="muted">—</span>}</td>
+                  <td className="l"><span className={"dir " + (row.direction === "short" ? "short" : "long")}>{row.direction === "short" ? "Short" : "Long"}</span></td>
                   <td className="num">{fInt(row.shares)}</td>
+                  <td className="num">{dur(row.held)}</td>
                   <td className="num">{fInt(row.execs)}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
